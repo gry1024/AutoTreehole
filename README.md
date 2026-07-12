@@ -1,12 +1,10 @@
 <div align="center">
 
-<img width="72" height="72" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none'><ellipse cx='24' cy='20' rx='11' ry='12' fill='%23C8A9A9'/><ellipse cx='15' cy='10' rx='4' ry='6' fill='%23B89898' transform='rotate(-20 15 10)'/><ellipse cx='33' cy='10' rx='4' ry='6' fill='%23B89898' transform='rotate(20 33 10)'/><ellipse cx='15' cy='11' rx='2' ry='3.5' fill='%23D8B8B8' transform='rotate(-20 15 11)'/><ellipse cx='33' cy='11' rx='2' ry='3.5' fill='%23D8B8B8' transform='rotate(20 33 11)'/><circle cx='20' cy='18' r='1.8' fill='%231D1D1F'/><circle cx='28' cy='18' r='1.8' fill='%231D1D1F'/><circle cx='20.5' cy='17.5' r='0.6' fill='%23fff'/><circle cx='28.5' cy='17.5' r='0.6' fill='%23fff'/><ellipse cx='24' cy='24' rx='2.2' ry='1.5' fill='%231D1D1F'/><path d='M22 26.5 Q24 28 26 26.5' stroke='%231D1D1F' stroke-width='1.2' fill='none' stroke-linecap='round'/><circle cx='16' cy='23' r='2' fill='%23E8C8C8' opacity='0.6'/><circle cx='32' cy='23' r='2' fill='%23E8C8C8' opacity='0.6'/><ellipse cx='24' cy='40' rx='14' ry='10' fill='%23C8A9A9'/><ellipse cx='16' cy='42' rx='3' ry='4' fill='%23B89898'/><ellipse cx='32' cy='42' rx='3' ry='4' fill='%23B89898'/></svg>" alt="AutoTreehole"/>
+<img width="72" height="72" src="assets/logo.svg" alt="AutoTreehole"/>
 
 # AutoTreehole
 
 **不再错过每一条有价值的树洞**
-
-北京大学树洞（匿名论坛）数据采集、分析与可视化平台
 
 </div>
 
@@ -14,40 +12,31 @@
 
 ## 理念
 
-北大树洞是校园里最真实的回响，但它的信息流瞬息万变，许多有价值的讨论转瞬即逝。
-
-AutoTreehole 希望把这些散落的声音留存下来——7×24 小时持续采集，让每一条有价值的树洞都不再被错过。
-
-> 为北大师生服务，让校园里那些值得被听见的声音，能够被听见得更久一点。
+树洞是校园最真实的回响，但许多有价值的讨论转瞬即逝。AutoTreehole 希望把这些散落的声音留存下来，让你不必成天刷着树洞也不会错过有用的信息，也让校园里那些值得被听见的声音，能够被听见得更久一点。
 
 ---
 
-## 你能看到什么
+## 板块
 
-打开网站，首页即是**概览**：
-
-- **数据概览** — 帖子总数、近 7 天新增、平均收藏与评论，配话题分布环形图，一眼看清社区在聊什么
-- **最新热点** — 近 24 小时内收藏 ≥ 10 的帖子，捕捉此刻正在发酵的话题
-- **近 7 天热点** — 一周内收藏 ≥ 10 的帖子，呈现持续被关注的内容
-
-除此之外，还有四个板块：
-
-| 板块 | 能做什么 |
-|------|----------|
+| 板块 | 功能 |
+|------|------|
+| **数据概览** | 帖子总数、近 7 天新增、平均收藏与评论，配话题分布环形图 |
+| **最新热点** | 近 24 小时内收藏 ≥ 10 的帖子 |
+| **近 7 天热点** | 一周内收藏 ≥ 10 的帖子 |
 | **热帖** | 按天数/数量筛选高收藏帖子，或用关键词模糊搜索正文 |
 | **AI 报告** | 调用大模型生成结构化分析报告（全周综述 / 关键词专题），报告内洞号可点击跳转 |
 | **详情** | 查看单帖完整正文、图片与评论树，支持楼层引用缩进与洞主标记 |
 | **关于** | 了解站点理念，或通过站长信箱留言 |
 
-> 页面每 60 秒自动刷新数据，也可手动点击刷新按钮。
+> 概览页每 60 秒自动刷新数据，也可手动点击刷新按钮。
 
 ---
 
-## 技术栈一览
+## 技术栈
 
 | 层 | 技术 |
 |----|------|
-| 爬虫 | Python + requests，7×24 增量采集，SQLite 落库 |
+| 爬虫 | Python + requests，增量采集，SQLite 落库 |
 | 后端 | Node.js + better-sqlite3 + nodemailer |
 | 前端 | 原生 HTML/CSS/JS（无框架），Marked.js + DOMPurify |
 | 设计 | Apple 极简风格，Noto Serif SC 字体 |
@@ -119,6 +108,8 @@ AutoTreehole/
 ├── frontend/
 │   ├── index.html                # 前端单文件应用
 │   └── admin.html                # 数据后台（独立）
+├── assets/
+│   └── logo.svg                  # 袋鼠 logo
 ├── .env.example                  # 环境变量模板
 └── TECH.md                       # 技术文档
 ```
