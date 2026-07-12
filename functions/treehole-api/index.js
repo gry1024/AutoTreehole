@@ -6,7 +6,8 @@
  * 数据库：better-sqlite3（原生模块，直读本地 SQLite 文件）。
  */
 
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../../.env") });
 
 const http = require("http");
 const https = require("https");
