@@ -1139,19 +1139,40 @@ mark{
 /* ==================== 邮箱验证遮罩 ==================== */
 .auth-overlay{
   position:fixed;inset:0;z-index:9999;
-  background:var(--bg);
+  background:
+    radial-gradient(circle at 18% 22%, rgba(91,141,191,0.32) 0%, transparent 32%),
+    radial-gradient(circle at 82% 16%, rgba(139,123,184,0.30) 0%, transparent 34%),
+    radial-gradient(circle at 22% 78%, rgba(107,168,137,0.28) 0%, transparent 32%),
+    radial-gradient(circle at 78% 76%, rgba(184,120,120,0.26) 0%, transparent 34%),
+    radial-gradient(circle at 50% 50%, rgba(184,154,107,0.22) 0%, transparent 42%),
+    var(--bg);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
+  overflow:hidden;
+}
+.auth-overlay::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.5) 0%, transparent 18%),
+    radial-gradient(circle at 65% 70%, rgba(255,255,255,0.4) 0%, transparent 20%);
+  filter:blur(30px);
 }
 .auth-overlay.hidden{display:none}
 
 /* ==================== 承诺窗口 ==================== */
 .pledge-overlay{
   position:fixed;inset:0;z-index:9998;
-  background:rgba(245,245,247,0.96);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  background:
+    radial-gradient(circle at 18% 22%, rgba(91,141,191,0.32) 0%, transparent 32%),
+    radial-gradient(circle at 82% 16%, rgba(139,123,184,0.30) 0%, transparent 34%),
+    radial-gradient(circle at 22% 78%, rgba(107,168,137,0.28) 0%, transparent 32%),
+    radial-gradient(circle at 78% 76%, rgba(184,120,120,0.26) 0%, transparent 34%),
+    radial-gradient(circle at 50% 50%, rgba(184,154,107,0.22) 0%, transparent 42%),
+    rgba(245,245,247,0.86);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
+  overflow:hidden;
 }
 .pledge-overlay.hidden{display:none}
 .pledge-card{
@@ -1245,10 +1266,15 @@ mark{
 .msg-card .msg-btn:hover{background:#000}
 .msg-card .msg-btn:disabled{opacity:.5;cursor:not-allowed}
 .auth-card{
+  position:relative;z-index:1;
   max-width:380px;width:100%;text-align:center;
+  background:var(--bg-elevated);
+  border-radius:12px;
+  padding:40px 32px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }
 .auth-card .auth-logo{
-  width:48px;height:48px;margin:0 auto 20px;opacity:0.8;
+  width:48px;height:48px;margin:0 auto 20px;opacity:0.95;
 }
 .auth-card h2{
   font-size:22px;font-weight:600;color:var(--fg);
@@ -1331,12 +1357,30 @@ mark{
 <div class="auth-overlay" id="authOverlay">
   <div class="auth-card">
     <svg class="auth-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- 袋鼠头部 -->
       <ellipse cx="24" cy="20" rx="11" ry="12" fill="#C8A9A9"/>
+      <!-- 耳朵 -->
       <ellipse cx="15" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(-20 15 10)"/>
       <ellipse cx="33" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(20 33 10)"/>
+      <ellipse cx="15" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(-20 15 11)"/>
+      <ellipse cx="33" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(20 33 11)"/>
+      <!-- 眼睛 -->
       <circle cx="20" cy="18" r="1.8" fill="#1D1D1F"/>
       <circle cx="28" cy="18" r="1.8" fill="#1D1D1F"/>
-      <ellipse cx="24" cy="24" rx="2" ry="1.2" fill="#B87878"/>
+      <circle cx="20.5" cy="17.5" r="0.6" fill="#fff"/>
+      <circle cx="28.5" cy="17.5" r="0.6" fill="#fff"/>
+      <!-- 鼻子 -->
+      <ellipse cx="24" cy="24" rx="2.2" ry="1.5" fill="#1D1D1F"/>
+      <!-- 嘴巴 -->
+      <path d="M22 26.5 Q24 28 26 26.5" stroke="#1D1D1F" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <!-- 腮红 -->
+      <circle cx="16" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
+      <circle cx="32" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
+      <!-- 身体上半身 -->
+      <ellipse cx="24" cy="40" rx="14" ry="10" fill="#C8A9A9"/>
+      <!-- 小爪子 -->
+      <ellipse cx="16" cy="42" rx="3" ry="4" fill="#B89898"/>
+      <ellipse cx="32" cy="42" rx="3" ry="4" fill="#B89898"/>
     </svg>
     <h2 id="authTitle">AutoTreehole</h2>
     <p class="auth-tagline">不再错过每一条有价值的树洞</p>
@@ -1397,7 +1441,7 @@ mark{
       </svg>
     </div>
     <h2>欢迎来到 AutoTreehole</h2>
-    <p class="pledge-text">本站得以长存，有赖于每一位用户的默契。<br>为避免站点被迫关停，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。<br><br>你的承诺，是本站继续服务大家的基石。</p>
+    <p class="pledge-text">BIG BROTHER IS WATCHING.<br>为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。每一位用户的默契，是本站继续服务大家的基石。</p>
     <button class="pledge-btn" id="pledgeBtn">我承诺</button>
   </div>
 </div>
@@ -1474,7 +1518,6 @@ mark{
     <div class="section-head">
       <div>
         <div class="section-title">数据概览</div>
-        <div class="section-sub">实时统计 · 热门速览 · 最近动态</div>
       </div>
       <div class="os-refresh">
         <span class="live-dot"></span>
@@ -1498,7 +1541,6 @@ mark{
       <div class="os-head">
         <div>
           <div class="os-title">
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color:var(--fg-secondary)"><path d="M8 1.5c-1.735 0-3.29.93-4.27 2.477C2.674 5.703 2.5 7.017 2.5 8.25c0 1.233.174 2.547 1.23 4.273C4.71 14.07 6.265 15 8 15s3.29-.93 4.27-2.477C13.326 10.797 13.5 9.483 13.5 8.25c0-1.233-.174-2.547-1.23-4.273C11.29 2.43 9.735 1.5 8 1.5z"/></svg>
             最新热点
             <span class="os-badge">近 24 小时 · 收藏 ≥ 10</span>
           </div>
@@ -1518,7 +1560,6 @@ mark{
       <div class="os-head">
         <div>
           <div class="os-title">
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color:var(--fg-secondary)"><path d="M8 1.5c-1.735 0-3.29.93-4.27 2.477C2.674 5.703 2.5 7.017 2.5 8.25c0 1.233.174 2.547 1.23 4.273C4.71 14.07 6.265 15 8 15s3.29-.93 4.27-2.477C13.326 10.797 13.5 9.483 13.5 8.25c0-1.233-.174-2.547-1.23-4.273C11.29 2.43 9.735 1.5 8 1.5z"/></svg>
             近 7 天热点
             <span class="os-badge">近 7 天 · 收藏 ≥ 10</span>
           </div>
@@ -1539,7 +1580,7 @@ mark{
     <div class="section-head">
       <div>
         <div class="section-title">热门帖子</div>
-        <div class="section-sub">按收藏量降序展示高热度内容，关键词模式模糊匹配正文</div>
+        <div class="section-sub">按收藏量降序展示高热度内容</div>
       </div>
     </div>
     <div class="toolbar">
@@ -1548,7 +1589,7 @@ mark{
         <button data-mode="keyword">关键词匹配</button>
       </div>
       <div class="field" id="hotKeywordField" style="display:none;flex:1;min-width:200px">
-        <label>关键词（模糊匹配正文）</label>
+        <label>关键词</label>
         <input type="text" id="hotKeyword" class="input" placeholder="如 期末 / 保研 / 选课" maxlength="80">
       </div>
       <div class="field">
@@ -1675,7 +1716,7 @@ mark{
 
       <div class="about-section">
         <h3 class="about-h">重要提醒</h3>
-        <p class="about-p about-warn">为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。你的默契，是本站继续服务大家的基石。</p>
+        <p class="about-p about-warn">BIG BROTHER IS WATCHING.<br>为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。你的默契，是本站继续服务大家的基石。</p>
       </div>
 
       <div class="about-section">
@@ -1771,13 +1812,21 @@ async function checkAuth(){
   return false;
 }
 
+// 加载应用主数据（init 与承诺完成后共用，避免遗漏 loadProviders 等）
+function loadAppData(){
+  if(typeof loadStats === 'function') loadStats();
+  if(typeof loadOverviewHot === 'function') loadOverviewHot();
+  if(typeof startOverviewAutoRefresh === 'function') startOverviewAutoRefresh();
+  if(typeof loadProviders === 'function') loadProviders();
+  if(typeof checkTokenStatus === 'function') checkTokenStatus();
+}
+
 async function acceptPledge(){
   try{
     await api('/auth/pledge', {method:'POST', body:{}});
     document.getElementById('pledgeOverlay').classList.add('hidden');
     startTracking();
-    if(typeof loadStats === 'function') loadStats();
-    if(typeof loadOverviewHot === 'function') loadOverviewHot();
+    loadAppData();
   }catch(e){
     alert('提交失败，请重试');
   }
@@ -2968,11 +3017,7 @@ async function checkTokenStatus(){
 (async function init(){
   const ok = await checkAuth();
   if(ok){
-    loadStats();
-    loadOverviewHot();
-    startOverviewAutoRefresh();
-    loadProviders();
-    checkTokenStatus();
+    loadAppData();
   }
 })();
 </script>
