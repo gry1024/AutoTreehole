@@ -371,13 +371,13 @@ select.input{
 /* ==================== 概览：热门速览 · 纯留白分割 ==================== */
 /* ==================== 话题分布 · 环形图（内嵌统计区） ==================== */
 .dist-row{
-  display:flex;align-items:center;gap:24px;
-  padding:16px 4px 14px;
+  display:flex;align-items:center;gap:20px;
+  padding:10px 4px;
   border-top:1px solid var(--divider-subtle);
-  margin-top:12px;
+  margin-top:8px;
 }
 .dist-donut{
-  width:88px;height:88px;flex:none;position:relative;
+  width:72px;height:72px;flex:none;position:relative;
 }
 .dist-donut svg{display:block;width:100%;height:100%;overflow:visible}
 .dist-donut .dist-center{
@@ -386,17 +386,17 @@ select.input{
   pointer-events:none;
 }
 .dist-donut .dist-num{
-  font-size:18px;font-weight:600;color:var(--fg);
+  font-size:16px;font-weight:600;color:var(--fg);
   line-height:1;font-family:var(--font-sans);
   letter-spacing:-0.02em;
 }
 .dist-donut .dist-num-label{
   font-size:9px;color:var(--fg-tertiary);
-  margin-top:3px;font-family:var(--font-sans);
+  margin-top:2px;font-family:var(--font-sans);
 }
 .dist-legend{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));
-  gap:6px 14px;flex:1;
+  gap:4px 12px;flex:1;
   font-size:12px;font-family:var(--font-sans);
 }
 .dist-legend .lg-item{
@@ -1089,9 +1089,9 @@ mark{
   .detail-pid-copy{padding:3px 6px 3px 0}
   .detail-pid-copy .copy-icon{width:12px;height:12px}
   .fab-back{right:16px;bottom:16px;width:40px;height:40px}
-  .dist-row{gap:16px;padding:14px 4px 12px}
-  .dist-donut{width:72px;height:72px}
-  .dist-donut .dist-num{font-size:15px}
+  .dist-row{gap:16px;padding:8px 4px}
+  .dist-donut{width:64px;height:64px}
+  .dist-donut .dist-num{font-size:14px}
   .dist-donut .dist-num-label{font-size:8px}
   .dist-legend{grid-template-columns:repeat(2,1fr);gap:5px 10px;font-size:11px}
 }
@@ -1460,22 +1460,42 @@ mark{
       <div class="dist-legend" id="distLegend"></div>
     </div>
 
-    <!-- 热门速览 -->
+    <!-- 最新热点 · 近 24 小时 -->
     <div class="overview-section">
       <div class="os-head">
         <div>
           <div class="os-title">
             <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color:var(--fg-secondary)"><path d="M8 1.5c-1.735 0-3.29.93-4.27 2.477C2.674 5.703 2.5 7.017 2.5 8.25c0 1.233.174 2.547 1.23 4.273C4.71 14.07 6.265 15 8 15s3.29-.93 4.27-2.477C13.326 10.797 13.5 9.483 13.5 8.25c0-1.233-.174-2.547-1.23-4.273C11.29 2.43 9.735 1.5 8 1.5z"/></svg>
-            热门速览
+            最新热点
+            <span class="os-badge">近 24 小时 · 收藏 ≥ 10</span>
+          </div>
+          <div class="os-sub">点击卡片查看完整内容与评论</div>
+        </div>
+      </div>
+      <div class="bubble-grid" id="bubbleGrid24h">
+        <div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary)">
+          <span class="spinner spinner-lg"></span>
+          <div style="margin-top:12px;font-size:14px;font-weight:300">正在加载…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 近 7 天热点 -->
+    <div class="overview-section">
+      <div class="os-head">
+        <div>
+          <div class="os-title">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color:var(--fg-secondary)"><path d="M8 1.5c-1.735 0-3.29.93-4.27 2.477C2.674 5.703 2.5 7.017 2.5 8.25c0 1.233.174 2.547 1.23 4.273C4.71 14.07 6.265 15 8 15s3.29-.93 4.27-2.477C13.326 10.797 13.5 9.483 13.5 8.25c0-1.233-.174-2.547-1.23-4.273C11.29 2.43 9.735 1.5 8 1.5z"/></svg>
+            近 7 天热点
             <span class="os-badge">近 7 天 · 收藏 ≥ 10</span>
           </div>
           <div class="os-sub">点击卡片查看完整内容与评论</div>
         </div>
       </div>
-      <div class="bubble-grid" id="bubbleGrid">
-        <div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--fg-secondary)">
+      <div class="bubble-grid" id="bubbleGrid7d">
+        <div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary)">
           <span class="spinner spinner-lg"></span>
-          <div style="margin-top:12px;font-size:14px;font-weight:300">正在加载热门帖子…</div>
+          <div style="margin-top:12px;font-size:14px;font-weight:300">正在加载…</div>
         </div>
       </div>
     </div>
@@ -2177,37 +2197,46 @@ const HEART_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25
 const CMT_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z"/></svg>';
 
 async function loadOverviewHot(){
-  const grid = document.getElementById('bubbleGrid');
-  try{
-    const data = await api('/hot?days=7&min_like=10&limit=100');
-    const posts = data.posts || [];
-    if(!posts.length){
-      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary);font-weight:300">暂无热帖数据</div>';
-      return;
-    }
-    grid.innerHTML = posts.map((p, i) => {
-      const grad = BUBBLE_GRADIENTS[i % BUBBLE_GRADIENTS.length];
-      const text = (p.text || '').slice(0, 200);
-      return `<div class="bubble-card" style="background:var(--${grad})" data-pid="${esc(p.pid)}">
-        <div class="bc-text">${esc(text)}</div>
-        <div class="bc-footer">
-          <span class="bc-pid">#${esc(p.pid)}</span>
-          ${p.deleted ? '<span class="bc-deleted">已删除</span>' : ''}
-          <span class="bc-meta hot">${HEART_ICON}${fmtNum(p.likenum)}</span>
-          <span class="bc-meta cmt">${CMT_ICON}${fmtNum(p.reply)}</span>
-          <span class="bc-time">${relTime(p.timestamp)}</span>
-        </div>
-      </div>`;
-    }).join('');
-    // 点击跳转详情
-    grid.querySelectorAll('.bubble-card[data-pid]').forEach(card => {
-      card.addEventListener('click', () => {
-        openDetail(card.dataset.pid);
-      });
-    });
-  }catch(e){
-    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--danger);font-weight:300">加载失败：${esc(e.message)}</div>`;
+  const grid24h = document.getElementById('bubbleGrid24h');
+  const grid7d = document.getElementById('bubbleGrid7d');
+  // 并发请求近 24 小时与近 7 天热帖
+  const [d24, d7] = await Promise.allSettled([
+    api('/hot?days=1&min_like=10&limit=100'),
+    api('/hot?days=7&min_like=10&limit=100')
+  ]);
+  renderBubbleGrid(grid24h, d24.status==='fulfilled' ? (d24.value.posts||[]) : null, d24.status==='rejected' ? d24.reason : null);
+  renderBubbleGrid(grid7d,  d7.status==='fulfilled'  ? (d7.value.posts||[])  : null, d7.status==='rejected'  ? d7.reason  : null);
+}
+
+function renderBubbleGrid(grid, posts, err){
+  if(err){
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--danger);font-weight:300">加载失败：${esc(err.message||err)}</div>`;
+    return;
   }
+  if(!posts || !posts.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary);font-weight:300">暂无热帖数据</div>';
+    return;
+  }
+  grid.innerHTML = posts.map((p, i) => {
+    const grad = BUBBLE_GRADIENTS[i % BUBBLE_GRADIENTS.length];
+    const text = (p.text || '').slice(0, 200);
+    return `<div class="bubble-card" style="background:var(--${grad})" data-pid="${esc(p.pid)}">
+      <div class="bc-text">${esc(text)}</div>
+      <div class="bc-footer">
+        <span class="bc-pid">#${esc(p.pid)}</span>
+        ${p.deleted ? '<span class="bc-deleted">已删除</span>' : ''}
+        <span class="bc-meta hot">${HEART_ICON}${fmtNum(p.likenum)}</span>
+        <span class="bc-meta cmt">${CMT_ICON}${fmtNum(p.reply)}</span>
+        <span class="bc-time">${relTime(p.timestamp)}</span>
+      </div>
+    </div>`;
+  }).join('');
+  // 点击跳转详情
+  grid.querySelectorAll('.bubble-card[data-pid]').forEach(card => {
+    card.addEventListener('click', () => {
+      openDetail(card.dataset.pid);
+    });
+  });
 }
 
 /* ==================== 概览：自动刷新 ==================== */
