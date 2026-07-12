@@ -501,6 +501,39 @@ select.input{
 .bubble-card .bc-time{margin-left:auto;color:var(--fg-tertiary)}
 .bubble-card .bc-decoration{display:none}
 
+/* 热门板块折叠状态 */
+.bubble-grid.collapsed{
+  max-height:560px;
+  overflow:hidden;
+  position:relative;
+}
+.bubble-grid.collapsed::after{
+  content:'';
+  position:absolute;
+  bottom:0;left:0;right:0;
+  height:48px;
+  background:linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events:none;
+}
+.bubble-toggle{
+  text-align:center;
+  padding:14px 0;
+  border-bottom:1px solid var(--divider-subtle);
+  cursor:pointer;
+  color:var(--fg-secondary);
+  font-size:13px;
+  font-family:var(--font-sans);
+  font-weight:300;
+  transition:color .2s,background .2s;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.bubble-toggle:hover{
+  color:var(--fg);
+  background:var(--bg-hover);
+}
+.bubble-toggle svg{width:14px;height:14px;transition:transform .2s}
+.bubble-toggle.expanded svg{transform:rotate(180deg)}
+
 /* ==================== 帖子列表 · 细横线分割 ==================== */
 .post-list{
   display:flex;flex-direction:column;
@@ -1646,8 +1679,7 @@ mark{
       </div>
 
       <div class="about-section">
-        <h3 class="about-h">站长信箱</h3>
-        <p class="about-p" style="margin-bottom:20px">交流一下？</p>
+        <h3 class="about-h" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">站长信箱<span style="font-size:13px;font-weight:400;color:var(--fg-secondary);letter-spacing:0">交流一下？</span></h3>
         <div class="about-field">
           <label>留言内容</label>
           <textarea id="msgContent" class="about-textarea" rows="5" placeholder="写下你想说的话…" maxlength="5000"></textarea>
@@ -2237,6 +2269,31 @@ function renderBubbleGrid(grid, posts, err){
       openDetail(card.dataset.pid);
     });
   });
+  // 折叠/展开逻辑：超过 6 条（约 3 行）时默认折叠
+  const TOGGLE_THRESHOLD = 6;
+  let toggleBtn = grid.nextElementSibling;
+  if(posts.length > TOGGLE_THRESHOLD){
+    grid.classList.add('collapsed');
+    if(!toggleBtn || !toggleBtn.classList.contains('bubble-toggle')){
+      toggleBtn = document.createElement('div');
+      toggleBtn.className = 'bubble-toggle';
+      grid.parentNode.insertBefore(toggleBtn, grid.nextSibling);
+    }
+    const ARROW = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>';
+    toggleBtn.innerHTML = '展开全部' + ARROW;
+    toggleBtn.classList.remove('expanded');
+    toggleBtn.onclick = () => {
+      const isCollapsed = grid.classList.toggle('collapsed');
+      toggleBtn.classList.toggle('expanded', !isCollapsed);
+      toggleBtn.innerHTML = (isCollapsed ? '展开全部' : '收起') + ARROW;
+    };
+    toggleBtn.style.display = '';
+  }else{
+    grid.classList.remove('collapsed');
+    if(toggleBtn && toggleBtn.classList.contains('bubble-toggle')){
+      toggleBtn.style.display = 'none';
+    }
+  }
 }
 
 /* ==================== 概览：自动刷新 ==================== */
