@@ -1037,6 +1037,18 @@ mark{
 .about-h{font-size:16px;font-weight:600;color:var(--fg);margin-bottom:12px;letter-spacing:-0.01em}
 .about-p{font-size:14px;color:var(--fg-secondary);line-height:1.8;font-weight:400}
 .about-warn{color:#B87878;padding:14px 16px;background:#FAF0F0;border-radius:var(--radius-sm)}
+.about-repo{
+  display:flex;align-items:center;gap:10px;
+  margin-top:14px;padding:13px 16px;
+  border:1px solid var(--divider-subtle);
+  border-radius:var(--radius);
+  background:var(--bg-elevated);
+  font-family:var(--font-sans);font-size:13px;
+  color:var(--fg);font-weight:400;
+  transition:border-color .2s,background .2s;
+}
+.about-repo:hover{border-color:var(--divider);background:var(--bg-hover);opacity:1}
+.about-repo svg{flex:none;color:var(--fg-secondary)}
 .about-field{margin-bottom:16px}
 .about-field label{display:block;font-size:12px;color:var(--fg-secondary);margin-bottom:6px;font-weight:400}
 .about-textarea{
@@ -1717,6 +1729,16 @@ mark{
       <div class="about-section">
         <h3 class="about-h">重要提醒</h3>
         <p class="about-p about-warn">BIG BROTHER IS WATCHING.<br>为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。你的默契，是本站继续服务大家的基石。</p>
+      </div>
+
+      <div class="about-section">
+        <h3 class="about-h">开源仓库</h3>
+        <p class="about-p">本站完整代码已开源，供有学习需求的同学参考。仅限个人学习使用，请勿用于商业用途或二次搭建公开站点。</p>
+        <a class="about-repo" href="https://github.com/gry1024/AutoTreehole" target="_blank" rel="noopener noreferrer">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span>github.com/gry1024/AutoTreehole</span>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;opacity:.6"><path d="M6 3h7v7"/><path d="M13 3L3 13"/></svg>
+        </a>
       </div>
 
       <div class="about-section">
