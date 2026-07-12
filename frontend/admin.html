@@ -201,6 +201,40 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    <!-- AI 报告统计 -->
+    <div class="chart-section">
+      <div class="chart-title">AI 报告调用趋势</div>
+      <div class="chart-sub" id="reportsStats">近 30 天每日报告生成数（成功 / 失败）</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="reportsChart"></svg></div>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">按服务商统计</div>
+      <div class="chart-sub">各 LLM 服务商的调用次数与成功率</div>
+      <table class="data-table">
+        <thead><tr><th>服务商</th><th>总次数</th><th>成功</th><th>失败</th><th>成功率</th></tr></thead>
+        <tbody id="reportsByProviderBody"></tbody>
+      </table>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">按模式统计</div>
+      <div class="chart-sub">全周分析 / 关键词专题 / 直连 / 代理等模式分布</div>
+      <table class="data-table">
+        <thead><tr><th>模式</th><th>总次数</th><th>成功</th><th>失败</th><th>成功率</th></tr></thead>
+        <tbody id="reportsByModeBody"></tbody>
+      </table>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">最近报告记录</div>
+      <div class="chart-sub">最近 50 条 AI 报告调用日志</div>
+      <table class="data-table">
+        <thead><tr><th>时间</th><th>IP</th><th>服务商</th><th>模式</th><th>状态</th><th>错误信息</th></tr></thead>
+        <tbody id="recentReportsBody"></tbody>
+      </table>
+    </div>
+
     <!-- 邀请码管理 -->
     <div class="table-section">
       <div class="table-title">邀请码管理</div>
@@ -266,6 +300,7 @@ async function loadData(){
   renderTopPosts(data.topPosts);
   renderRecentUsers(data.recentUsers);
   renderInviteStats(data.invite);
+  if(data.reports) renderReports(data.reports);
   await loadInviteList();
   return data;
 }
@@ -429,6 +464,98 @@ function fmtTime(ts){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ==================== AI 报告统计 ==================== */
+function renderReports(r){
+  if(!r) return;
+  const statsEl = document.getElementById('reportsStats');
+  if(statsEl){
+    const rate = r.total > 0 ? Math.round(r.success / r.total * 1000) / 10 : 0;
+    statsEl.textContent = `总计 ${r.total} 次 · 成功 ${r.success} · 失败 ${r.fail} · 今日 ${r.today} 次 · 成功率 ${rate}%`;
+  }
+  // 趋势图（堆叠柱状：成功 + 失败）
+  drawStackedBarChart('reportsChart', r.trend || [], 'success', 'fail', 'day');
+  // 按服务商
+  const pv = document.getElementById('reportsByProviderBody');
+  if(r.byProvider && r.byProvider.length){
+    pv.innerHTML = r.byProvider.map(p => {
+      const rate = p.count > 0 ? Math.round(p.success / p.count * 1000) / 10 : 0;
+      return `<tr><td>${esc(p.provider)}</td><td>${p.count}</td><td style="color:#34C759">${p.success}</td><td style="color:#FF3B30">${p.fail}</td><td>${rate}%</td></tr>`;
+    }).join('');
+  }else{
+    pv.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+  // 按模式
+  const mv = document.getElementById('reportsByModeBody');
+  if(r.byMode && r.byMode.length){
+    mv.innerHTML = r.byMode.map(m => {
+      const rate = m.count > 0 ? Math.round(m.success / m.count * 1000) / 10 : 0;
+      const modeLabel = {week:'全周分析', keyword:'关键词专题', direct:'直连模式', proxy:'代理模式'}[m.mode] || m.mode;
+      return `<tr><td>${esc(modeLabel)}</td><td>${m.count}</td><td style="color:#34C759">${m.success}</td><td style="color:#FF3B30">${m.fail}</td><td>${rate}%</td></tr>`;
+    }).join('');
+  }else{
+    mv.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+  // 最近记录
+  const rv = document.getElementById('recentReportsBody');
+  if(r.recent && r.recent.length){
+    rv.innerHTML = r.recent.map(rr => {
+      const time = new Date(rr.createdAt * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'});
+      const modeLabel = {week:'全周分析', keyword:'关键词专题', direct:'直连模式', proxy:'代理模式'}[rr.mode] || rr.mode || '-';
+      const status = rr.success
+        ? '<span style="color:#34C759">成功</span>'
+        : '<span style="color:#FF3B30">失败</span>';
+      const errMsg = rr.errMsg ? esc(rr.errMsg.slice(0, 80)) : '<span style="color:#86868B">-</span>';
+      return `<tr><td>${esc(time)}</td><td>${esc(rr.ip)}</td><td>${esc(rr.provider)}</td><td>${esc(modeLabel)}</td><td>${status}</td><td class="text-cell" title="${esc(rr.errMsg||'')}">${errMsg}</td></tr>`;
+    }).join('');
+  }else{
+    rv.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+}
+
+// 堆叠柱状图（成功绿色 + 失败红色）
+function drawStackedBarChart(svgId, dataPoints, successKey, failKey, labelKey){
+  const svg = document.getElementById(svgId);
+  if(!dataPoints || dataPoints.length === 0){
+    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#86868B" font-size="13">暂无数据</text>';
+    return;
+  }
+  const W = 1000, H = 240, padL = 50, padR = 20, padT = 20, padB = 40;
+  const totals = dataPoints.map(d => (d[successKey]||0) + (d[failKey]||0));
+  const maxVal = Math.max(...totals, 1);
+  const groupW = (W - padL - padR) / dataPoints.length;
+  const barW = Math.max(groupW * 0.6, 2);
+  let grid = '';
+  for(let i = 0; i <= 4; i++){
+    const y = padT + (H - padT - padB) * (1 - i / 4);
+    const v = Math.round(maxVal * i / 4);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E8E8ED" stroke-width="1"/>`;
+    grid += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${v}</text>`;
+  }
+  let bars = '';
+  let labels = '';
+  const labelStep = Math.max(1, Math.floor(dataPoints.length / 8));
+  dataPoints.forEach((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const s = d[successKey] || 0;
+    const f = d[failKey] || 0;
+    const sH = s / maxVal * (H - padT - padB);
+    const fH = f / maxVal * (H - padT - padB);
+    const baseY = H - padB;
+    // 成功（底部，绿）
+    bars += `<rect x="${cx - barW/2}" y="${baseY - sH}" width="${barW}" height="${sH}" fill="#34C759" rx="2"/>`;
+    // 失败（成功上方，红）
+    if(f > 0){
+      bars += `<rect x="${cx - barW/2}" y="${baseY - sH - fH}" width="${barW}" height="${fH}" fill="#FF3B30" rx="2"/>`;
+    }
+    if(i % labelStep === 0 || i === dataPoints.length - 1){
+      labels += `<text x="${cx}" y="${H - padB + 14}" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">${(d[labelKey]||'').slice(5)}</text>`;
+    }
+  });
+  svg.innerHTML = grid + bars + labels;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+}
 
 /* ==================== 邀请码管理 ==================== */
 function renderInviteStats(inv){

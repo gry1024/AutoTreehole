@@ -162,6 +162,14 @@ function rateLimit(ip, isReport) {
 function logReportCall(ip, provider, mode, success, errMsg) {
   const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
   console.log(`[report] ${ts} ip=${ip} provider=${provider} mode=${mode} ${success ? "OK" : "FAIL:" + (errMsg || "")}`);
+  // 入库（异步，失败不影响主流程）
+  try {
+    if (db) {
+      db.prepare(
+        "INSERT INTO report_logs (ip, provider, mode, success, err_msg, created_at) VALUES (?,?,?,?,?,?)"
+      ).run(ip || "", provider || "", mode || "", success ? 1 : 0, errMsg || "", Math.floor(Date.now() / 1000));
+    }
+  } catch (e) { /* 入库失败忽略 */ }
 }
 
 setInterval(() => {
@@ -314,6 +322,16 @@ function ensureDb() {
       used_by     TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_invite_codes_used ON invite_codes(used_at);
+    CREATE TABLE IF NOT EXISTS report_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      ip         TEXT,
+      provider   TEXT,
+      mode       TEXT,
+      success    INTEGER NOT NULL,
+      err_msg    TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_report_logs_created ON report_logs(created_at);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -1194,6 +1212,33 @@ function handleAdminStats() {
      FROM users WHERE email LIKE 'invite:%' ORDER BY verified_at DESC LIMIT 50`
   );
 
+  // AI 报告统计
+  const totalReports = queryOne("SELECT COUNT(*) as c FROM report_logs").c;
+  const successReports = queryOne("SELECT COUNT(*) as c FROM report_logs WHERE success = 1").c;
+  const reportsToday = queryOne("SELECT COUNT(*) as c FROM report_logs WHERE created_at >= ?", [todayStart]).c;
+  // 按 provider 统计
+  const reportsByProvider = queryAll(
+    `SELECT provider, COUNT(*) as count, SUM(success) as success_count
+     FROM report_logs GROUP BY provider ORDER BY count DESC`
+  );
+  // 按 mode 统计
+  const reportsByMode = queryAll(
+    `SELECT mode, COUNT(*) as count, SUM(success) as success_count
+     FROM report_logs GROUP BY mode ORDER BY count DESC`
+  );
+  // 近 30 天报告趋势
+  const reportsTrend = queryAll(
+    `SELECT date(created_at, 'unixepoch', 'localtime') as day, COUNT(*) as total, SUM(success) as success
+     FROM report_logs WHERE created_at >= ?
+     GROUP BY day ORDER BY day ASC`,
+    [Math.floor(Date.now() / 1000) - 30 * 86400]
+  );
+  // 最近 50 条报告记录
+  const recentReports = queryAll(
+    `SELECT ip, provider, mode, success, err_msg, created_at
+     FROM report_logs ORDER BY created_at DESC LIMIT 50`
+  );
+
   return {
     overview: { totalUsers, newToday, activeToday, totalViews, viewsToday },
     growth: growthSeries,
@@ -1207,6 +1252,38 @@ function handleAdminStats() {
       used: usedInviteCodes,
       available: totalInviteCodes - usedInviteCodes,
       users: inviteUsers,
+    },
+    reports: {
+      total: totalReports,
+      success: successReports,
+      fail: totalReports - successReports,
+      today: reportsToday,
+      byProvider: reportsByProvider.map(r => ({
+        provider: r.provider || 'unknown',
+        count: r.count,
+        success: r.success_count || 0,
+        fail: r.count - (r.success_count || 0),
+      })),
+      byMode: reportsByMode.map(r => ({
+        mode: r.mode || 'unknown',
+        count: r.count,
+        success: r.success_count || 0,
+        fail: r.count - (r.success_count || 0),
+      })),
+      trend: reportsTrend.map(r => ({
+        day: r.day,
+        total: r.total,
+        success: r.success || 0,
+        fail: r.total - (r.success || 0),
+      })),
+      recent: recentReports.map(r => ({
+        ip: r.ip,
+        provider: r.provider,
+        mode: r.mode,
+        success: !!r.success,
+        errMsg: r.err_msg,
+        createdAt: r.created_at,
+      })),
     },
   };
 }
