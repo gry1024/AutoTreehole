@@ -1,0 +1,2894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoTreehole</title>
+<!-- 思源宋体 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@200;300;400;500;600;700;900&display=swap" rel="stylesheet">
+<!-- Markdown 渲染 + XSS 防护 -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<style>
+/* ==================== 设计令牌 · Apple 极简 ==================== */
+:root{
+  /* 背景：极淡冷灰，营造硬件纸质感 */
+  --bg:#F5F5F7;
+  --bg-elevated:#FFFFFF;
+  --bg-hover:#EBEBEE;
+
+  /* 文字：深炭黑为主，中灰为次（加深以提高可读性） */
+  --fg:#1D1D1F;
+  --fg-secondary:#6E6E73;
+  --fg-tertiary:#86868B;
+
+  /* 强调色：极其克制，仅关键行动点 */
+  --accent:#1D1D1F;
+  --accent-blue:#0071E3;
+
+  /* 分割线：优雅的细横线 */
+  --divider:#D2D2D7;
+  --divider-subtle:#E8E8ED;
+
+  /* 状态色（降低饱和度） */
+  --danger:#FF3B30;
+  --success:#34C759;
+  --warning:#FF9500;
+
+  /* 圆角：极其克制的微圆角 */
+  --radius:6px;
+  --radius-sm:4px;
+
+  /* 阴影：极淡或不要 */
+  --shadow-none:none;
+  --shadow-subtle:0 1px 2px rgba(0,0,0,0.03);
+
+  /* 字体：思源宋体为主 */
+  --font-serif:"Noto Serif SC","Source Han Serif SC","Songti SC",serif;
+  --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Noto Sans SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  /* 泡泡卡片色板：全部统一为纯白（打破彩色渐变） */
+  --bubble-1:#FFFFFF;
+  --bubble-2:#FFFFFF;
+  --bubble-3:#FFFFFF;
+  --bubble-4:#FFFFFF;
+  --bubble-5:#FFFFFF;
+  --bubble-6:#FFFFFF;
+  --bubble-7:#FFFFFF;
+  --bubble-8:#FFFFFF;
+}
+
+/* ==================== 基础重置 ==================== */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font-serif);
+  background:var(--bg);
+  color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  line-height:1.7;
+  font-size:15px;
+  font-weight:400;
+  letter-spacing:0.01em;
+}
+a{color:var(--accent-blue);text-decoration:none;transition:opacity .15s}
+a:hover{opacity:0.7}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:var(--font-sans);color:inherit}
+::selection{background:#0071E3;color:#fff;opacity:0.15}
+
+/* ==================== 顶部导航栏 · 毛玻璃白 ==================== */
+.header{
+  background:rgba(255,255,255,0.72);
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid var(--divider-subtle);
+  position:sticky;top:0;z-index:100;
+}
+.header-inner{
+  max-width:1024px;margin:0 auto;
+  display:flex;align-items:center;gap:32px;
+  padding:16px 24px;
+}
+.header-title{
+  font-size:18px;font-weight:600;color:var(--fg);
+  display:flex;align-items:center;gap:10px;
+  white-space:nowrap;letter-spacing:-0.02em;
+  font-family:var(--font-serif);
+}
+.header-logo{width:36px;height:36px;opacity:0.9;transition:opacity .4s ease}
+.header-tagline{
+  font-size:12px;font-weight:400;color:var(--fg-tertiary);
+  letter-spacing:0.02em;font-family:var(--font-serif);
+  padding-left:10px;margin-left:2px;
+  border-left:1px solid var(--divider-subtle);
+  white-space:nowrap;
+}
+.header-tabs{
+  display:flex;gap:24px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  margin-left:auto;
+}
+.header-tabs::-webkit-scrollbar{display:none}
+.tab-btn{
+  padding:4px 0;
+  font-size:14px;font-weight:400;
+  color:var(--fg-secondary);
+  white-space:nowrap;
+  border-bottom:1.5px solid transparent;
+  transition:color .2s,border-color .2s;
+  font-family:var(--font-serif);
+}
+.tab-btn:hover{color:var(--fg);text-decoration:none}
+.tab-btn.active{color:var(--fg);font-weight:500;border-bottom-color:var(--fg)}
+
+/* ==================== 内容区 · 巨大呼吸感 ==================== */
+.container{
+  max-width:1024px;margin:0 auto;
+  padding:32px 24px 64px;
+}
+.panel{display:none}
+.panel.active{display:block;animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* 区块标题 · 强视觉层级 */
+.section-head{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:20px;margin-bottom:24px;flex-wrap:wrap;
+}
+.section-title{
+  font-size:26px;font-weight:600;
+  letter-spacing:-0.03em;
+  line-height:1.2;
+  color:var(--fg);
+}
+.section-sub{
+  color:var(--fg-secondary);font-size:13px;
+  margin-top:4px;font-weight:400;
+  letter-spacing:0.02em;
+}
+
+/* ==================== 通用组件 · 打破卡片 ==================== */
+/* 表单行：无背景、无边框、纯留白 */
+.toolbar{
+  display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;
+  margin-bottom:24px;
+  padding:0;
+  background:none;
+  border:none;
+  border-radius:0;
+}
+.field{display:flex;flex-direction:column;gap:6px}
+.field > label{
+  font-size:12px;color:var(--fg-secondary);
+  font-weight:400;letter-spacing:0.03em;
+}
+.input,select.input{
+  background:var(--bg-elevated);
+  border:1px solid var(--divider);
+  border-radius:var(--radius-sm);
+  padding:8px 12px;font-size:14px;
+  color:var(--fg);
+  min-width:0;outline:none;
+  transition:border-color .2s,box-shadow .2s;
+  line-height:22px;
+  font-family:var(--font-sans);
+}
+.input:focus,select.input:focus{
+  border-color:var(--accent-blue);
+  box-shadow:0 0 0 3px rgba(0,113,227,0.12);
+}
+.input::placeholder{color:var(--fg-tertiary)}
+.input-sm{width:100px}
+.input-md{width:200px}
+.input-lg{width:300px}
+select.input{
+  appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center;
+  padding-right:32px;cursor:pointer;
+}
+
+/* 按钮 · 微圆角、克制 */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 24px;border-radius:var(--radius-sm);
+  font-size:14px;font-weight:400;
+  border:1px solid var(--divider);
+  background:var(--bg-elevated);
+  color:var(--fg);
+  transition:background .2s,border-color .2s,opacity .15s;
+  white-space:nowrap;line-height:22px;
+  font-family:var(--font-sans);
+}
+.btn:hover{background:var(--bg-hover);text-decoration:none}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn svg{width:16px;height:16px}
+.btn-primary{
+  background:var(--accent);
+  color:#fff;border-color:var(--accent);
+}
+.btn-primary:hover{background:#000;border-color:#000}
+.btn-danger{
+  background:var(--danger);
+  color:#fff;border-color:var(--danger);
+}
+.btn-danger:hover{background:#E0342A;border-color:#E0342A}
+
+/* 卡片 · 打破：去除背景、边框、阴影 */
+.card{
+  background:none;
+  border:none;
+  border-radius:0;
+  box-shadow:none;
+}
+
+/* 悬浮返回按钮 · 仅详情页可见 */
+.fab-back{
+  position:fixed;
+  right:28px;bottom:28px;
+  width:44px;height:44px;
+  border-radius:50%;
+  background:var(--fg);
+  color:#fff;
+  border:none;
+  display:none;
+  align-items:center;justify-content:center;
+  cursor:pointer;
+  z-index:200;
+  box-shadow:0 2px 12px rgba(0,0,0,0.18);
+  transition:transform .2s ease,box-shadow .2s ease,opacity .2s;
+  opacity:0.88;
+}
+.fab-back:hover{
+  transform:translateY(-2px);
+  box-shadow:0 4px 16px rgba(0,0,0,0.22);
+  opacity:1;
+}
+.fab-back:active{transform:translateY(0)}
+
+/* Flash banner · 克制 */
+.flash-wrap{
+  position:fixed;top:0;left:0;right:0;z-index:9999;
+  display:flex;flex-direction:column;align-items:center;
+  padding:16px;pointer-events:none;
+}
+.flash{
+  pointer-events:auto;
+  display:flex;align-items:center;gap:10px;
+  padding:12px 20px;border-radius:var(--radius);
+  font-size:14px;font-weight:400;color:var(--fg);
+  max-width:500px;width:100%;
+  background:rgba(255,255,255,0.9);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid var(--divider);
+  box-shadow:0 2px 12px rgba(0,0,0,0.06);
+  animation:flashIn .25s ease;
+  font-family:var(--font-sans);
+}
+.flash.error{border-left:3px solid var(--danger)}
+.flash.success{border-left:3px solid var(--success)}
+.flash.info{border-left:3px solid var(--accent-blue)}
+.flash svg{width:16px;height:16px;flex:none}
+.flash.error svg{color:var(--danger)}
+.flash.success svg{color:var(--success)}
+.flash.info svg{color:var(--accent-blue)}
+.flash .flash-close{margin-left:auto;background:none;border:none;color:var(--fg-secondary);cursor:pointer;opacity:.6;padding:2px}
+.flash .flash-close:hover{opacity:1}
+@keyframes flashIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+
+/* Spinner */
+.spinner{
+  display:inline-block;width:16px;height:16px;
+  border:2px solid var(--divider-subtle);
+  border-top-color:var(--fg-secondary);
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+.spinner-lg{width:28px;height:28px;border-width:2.5px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 空状态 */
+.empty-state{
+  text-align:center;padding:64px 24px;
+  color:var(--fg-secondary);
+  font-weight:300;
+}
+.empty-state svg{width:32px;height:32px;color:var(--fg-tertiary);margin-bottom:12px}
+
+/* ==================== 概览：统计 · 打破卡片，通栏数字 ==================== */
+.stats-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:0;margin-bottom:8px;
+  border-top:1px solid var(--divider-subtle);
+  border-bottom:1px solid var(--divider-subtle);
+}
+.stat-card{
+  background:none;
+  border:none;
+  border-radius:0;
+  padding:16px 18px;
+  box-shadow:none;
+  transition:none;
+  border-right:1px solid var(--divider-subtle);
+}
+.stat-card:last-child{border-right:none}
+.stat-card:hover{
+  transform:none;
+  box-shadow:none;
+  border-color:var(--divider-subtle);
+}
+.stat-card .stat-label{
+  font-size:12px;color:var(--fg-secondary);
+  font-weight:400;letter-spacing:0.04em;
+  display:flex;align-items:center;gap:6px;
+}
+.stat-card .stat-label svg{width:13px;height:13px}
+.stat-card .stat-value{
+  font-size:28px;font-weight:400;color:var(--fg);
+  margin-top:6px;line-height:1.1;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-0.03em;
+  font-family:var(--font-serif);
+}
+.stat-card .stat-delta{
+  font-size:11px;color:var(--fg-tertiary);
+  margin-top:6px;font-weight:400;
+}
+
+/* 统计区旁注 · 小字 */
+.stats-note{
+  font-size:12px;color:var(--fg-tertiary);
+  margin-top:12px;font-weight:300;
+  font-family:var(--font-sans);
+  letter-spacing:0.02em;
+  text-align:right;
+}
+
+/* 渐变统计卡 · 全部统一为无色 */
+.stat-card.grad-1,.stat-card.grad-2,.stat-card.grad-3,.stat-card.grad-4,.stat-card.grad-5{
+  background:none;border-color:var(--divider-subtle);
+}
+.stat-card .stat-icon-wrap{
+  width:28px;height:28px;border-radius:var(--radius-sm);
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:0;
+}
+/* 统计卡片图标：浅色系配色，保持简约 */
+.stat-card.grad-1 .stat-icon-wrap{background:#E8F0FA;color:#5B8DBF}
+.stat-card.grad-2 .stat-icon-wrap{background:#F0EBF8;color:#8B7BB8}
+.stat-card.grad-3 .stat-icon-wrap{background:#E8F5EE;color:#6BA889}
+.stat-card.grad-4 .stat-icon-wrap{background:#F8E8E8;color:#B87878}
+.stat-card.grad-5 .stat-icon-wrap{background:#F8F0E0;color:#B89A6B}
+.stat-card .stat-icon-wrap svg{width:16px;height:16px}
+
+/* ==================== 概览：热门速览 · 纯留白分割 ==================== */
+/* ==================== 话题分布 · 环形图（内嵌统计区） ==================== */
+.dist-row{
+  display:flex;align-items:center;gap:24px;
+  padding:16px 4px 14px;
+  border-top:1px solid var(--divider-subtle);
+  margin-top:12px;
+}
+.dist-donut{
+  width:88px;height:88px;flex:none;position:relative;
+}
+.dist-donut svg{display:block;width:100%;height:100%;overflow:visible}
+.dist-donut .dist-center{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.dist-donut .dist-num{
+  font-size:18px;font-weight:600;color:var(--fg);
+  line-height:1;font-family:var(--font-sans);
+  letter-spacing:-0.02em;
+}
+.dist-donut .dist-num-label{
+  font-size:9px;color:var(--fg-tertiary);
+  margin-top:3px;font-family:var(--font-sans);
+}
+.dist-legend{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));
+  gap:6px 14px;flex:1;
+  font-size:12px;font-family:var(--font-sans);
+}
+.dist-legend .lg-item{
+  display:flex;align-items:center;gap:6px;
+  color:var(--fg-secondary);
+  cursor:default;transition:opacity .15s;
+}
+.dist-legend .lg-item.is-other{opacity:0.65}
+.dist-legend .lg-dot{width:8px;height:8px;border-radius:2px;flex:none}
+.dist-legend .lg-name{flex:1;white-space:nowrap}
+.dist-legend .lg-pct{
+  font-variant-numeric:tabular-nums;
+  color:var(--fg);font-weight:500;
+}
+.dist-empty{
+  padding:16px 4px;color:var(--fg-tertiary);
+  font-size:12px;font-weight:300;
+  border-top:1px solid var(--divider-subtle);
+  margin-top:12px;
+}
+
+.overview-section{
+  margin-top:24px;
+}
+.overview-section .os-head{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  margin-bottom:16px;flex-wrap:wrap;gap:12px;
+}
+.overview-section .os-title{
+  font-size:22px;font-weight:600;
+  display:flex;align-items:center;gap:10px;
+  letter-spacing:-0.02em;
+}
+.overview-section .os-title svg{color:var(--fg-secondary);width:18px;height:18px}
+.overview-section .os-title .os-badge{
+  font-size:11px;font-weight:400;padding:3px 10px;
+  border-radius:999px;background:var(--divider-subtle);
+  color:var(--fg-secondary);letter-spacing:0.03em;
+}
+.overview-section .os-sub{font-size:13px;color:var(--fg-secondary);font-weight:300}
+.overview-section .os-refresh{
+  font-size:12px;color:var(--fg-secondary);
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--font-sans);font-weight:300;
+}
+.overview-section .os-refresh .live-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--success);
+  animation:pulse 2.5s ease infinite;
+}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,199,89,0.3)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(52,199,89,0)}}
+
+.bubble-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  gap:0;
+  border-top:1px solid var(--divider-subtle);
+}
+.bubble-card{
+  border-radius:0;
+  padding:20px 20px;
+  cursor:pointer;
+  transition:background .2s ease;
+  position:relative;overflow:hidden;
+  border:none;
+  border-bottom:1px solid var(--divider-subtle);
+  border-right:1px solid var(--divider-subtle);
+  display:flex;flex-direction:column;gap:12px;
+  min-height:auto;
+  background:none;
+}
+.bubble-card:hover{
+  transform:none;
+  box-shadow:none;
+  background:var(--bg-hover);
+}
+.bubble-card:active{transform:none}
+.bubble-card .bc-text{
+  font-size:14px;line-height:1.7;color:var(--fg);
+  white-space:pre-wrap;word-break:break-word;
+  max-height:6em;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;
+  font-weight:400;
+}
+.bubble-card .bc-footer{
+  display:flex;align-items:center;gap:16px;
+  font-size:12px;color:var(--fg-secondary);
+  flex-wrap:wrap;
+  font-family:var(--font-sans);font-weight:300;
+}
+.bubble-card .bc-pid{
+  font-family:var(--mono);font-weight:400;
+  padding:0;border-radius:0;
+  background:none;
+  color:var(--fg-secondary);
+  font-size:12px;
+}
+.bubble-card .bc-meta{display:inline-flex;align-items:center;gap:3px}
+.bubble-card .bc-meta svg{width:13px;height:13px}
+.bubble-card .bc-meta.hot{color:#B87878}
+.bubble-card .bc-meta.cmt{color:#5B8DBF}
+.bubble-card .bc-time{margin-left:auto;color:var(--fg-tertiary)}
+.bubble-card .bc-decoration{display:none}
+
+/* ==================== 帖子列表 · 细横线分割 ==================== */
+.post-list{
+  display:flex;flex-direction:column;
+  border:none;border-radius:0;overflow:visible;
+  background:none;box-shadow:none;
+  border-top:1px solid var(--divider-subtle);
+}
+.post-item{
+  display:flex;align-items:flex-start;gap:16px;
+  padding:16px 0;
+  border-bottom:1px solid var(--divider-subtle);
+  background:none;
+  transition:background .15s;
+  cursor:pointer;
+}
+.post-item:last-child{border-bottom:none}
+.post-item:hover{
+  background:none;
+  box-shadow:inset 2px 0 0 var(--fg);
+  padding-left:12px;
+}
+.post-item.expanded{flex-direction:column}
+.post-item-main{flex:1;min-width:0}
+.post-item-aside{
+  display:flex;align-items:center;gap:20px;
+  font-size:13px;color:var(--fg-secondary);
+  white-space:nowrap;flex-shrink:0;
+  font-family:var(--font-sans);font-weight:300;
+}
+.post-item-aside .meta{display:inline-flex;align-items:center;gap:4px}
+.post-item-aside .meta svg{width:14px;height:14px}
+.post-item-aside .meta.hot{color:var(--fg-secondary)}
+.post-item-aside .meta.cmt{color:var(--fg-secondary)}
+
+.pid-link{
+  font-family:var(--mono);font-size:13px;font-weight:400;
+  color:var(--fg-secondary);
+  background:none;
+  padding:0;border-radius:0;
+  border:none;
+  cursor:pointer;transition:color .15s;
+  display:inline-block;
+}
+.pid-link:hover{color:var(--fg);background:none;text-decoration:none}
+
+/* 详情页洞号：可点击复制 */
+.detail-pid-copy{
+  display:inline-flex;align-items:center;gap:5px;
+  cursor:pointer;
+  padding:3px 10px 3px 0;
+  border-radius:var(--radius-sm);
+  transition:color .15s;
+}
+.detail-pid-copy .copy-icon{
+  width:13px;height:13px;
+  color:var(--fg-tertiary);
+  opacity:.4;
+  transition:opacity .15s,color .15s;
+}
+.detail-pid-copy:hover{color:var(--fg)}
+.detail-pid-copy:hover .copy-icon{opacity:.8;color:var(--fg-secondary)}
+.detail-pid-copy.copied .copy-icon{opacity:1!important;color:var(--success)}
+
+.type-tag{
+  font-size:11px;font-weight:400;
+  padding:2px 8px;border-radius:var(--radius-sm);
+  letter-spacing:0.03em;
+  font-family:var(--font-sans);
+}
+.type-tag.text{
+  background:var(--divider-subtle);color:var(--fg-secondary);
+  border:none;
+}
+.type-tag.image{
+  background:var(--divider-subtle);color:var(--fg-secondary);
+  border:none;
+}
+
+/* 已删除标记 */
+.deleted-badge{
+  font-size:11px;font-weight:400;
+  padding:2px 8px;border-radius:var(--radius-sm);
+  background:#FDE8E8;color:var(--danger);
+  border:1px solid #F8D0D0;
+  letter-spacing:0.03em;
+  font-family:var(--font-sans);
+}
+.bubble-card .bc-deleted{
+  font-size:10px;font-weight:400;
+  padding:1px 6px;border-radius:var(--radius-sm);
+  background:#FDE8E8;color:var(--danger);
+  font-family:var(--font-sans);
+  letter-spacing:0.02em;
+}
+
+.post-text{
+  font-size:14px;color:var(--fg);
+  white-space:pre-wrap;word-break:break-word;
+  margin-top:6px;
+  max-height:4.5em;overflow:hidden;
+  line-height:1.7;font-weight:400;
+}
+.post-text.expanded{max-height:none}
+.post-toggle{
+  font-size:13px;font-weight:400;color:var(--accent-blue);
+  padding:6px 0;margin-top:8px;
+  display:inline-flex;align-items:center;gap:4px;
+  font-family:var(--font-sans);
+}
+.post-toggle:hover{text-decoration:none;opacity:0.7}
+.post-toggle svg{width:12px;height:12px;transition:transform .2s}
+.post-toggle.expanded svg{transform:rotate(180deg)}
+
+.post-head-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* 帖子图片 */
+.post-images{
+  display:flex;flex-wrap:wrap;gap:8px;
+  margin-top:12px;
+}
+.post-images img{
+  max-width:200px;max-height:200px;
+  border-radius:var(--radius-sm);
+  border:1px solid var(--divider-subtle);
+  cursor:pointer;
+  transition:opacity .15s;
+  object-fit:cover;
+}
+.post-images img:hover{opacity:0.85}
+
+/* 搜索高亮 */
+mark{
+  background:none;color:var(--fg);font-weight:600;
+  padding:0;border-radius:0;
+  border-bottom:1px solid var(--accent-blue);
+}
+
+/* 结果计数 */
+.result-count{
+  font-size:13px;color:var(--fg-secondary);
+  margin-bottom:20px;padding:0;
+  font-family:var(--font-sans);font-weight:300;
+}
+.result-count b{color:var(--fg);font-weight:500}
+
+/* 骨架屏 */
+.skeleton{
+  background:linear-gradient(90deg,var(--bg) 25%,var(--bg-hover) 37%,var(--bg) 63%);
+  background-size:400% 100%;
+  animation:shimmer 1.6s ease infinite;
+  border-radius:var(--radius-sm);
+}
+@keyframes shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
+.sk-item{padding:24px 0;border-bottom:1px solid var(--divider-subtle)}
+.sk-item:last-child{border-bottom:none}
+.sk-line{height:12px;margin-bottom:10px;border-radius:var(--radius-sm)}
+.sk-line.short{width:40%}
+.sk-line.mid{width:70%}
+
+/* ==================== 帖子详情 · 排版聚焦 ==================== */
+.detail-post{
+  padding:20px 0 28px;margin-bottom:0;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.detail-post .detail-title{
+  font-size:12px;color:var(--fg-secondary);
+  font-weight:400;letter-spacing:0.06em;
+  margin-bottom:12px;
+  font-family:var(--font-sans);
+}
+.detail-text{
+  font-size:16px;white-space:pre-wrap;word-break:break-word;
+  line-height:1.8;color:var(--fg);margin-top:12px;
+  font-weight:400;letter-spacing:0.01em;
+}
+.detail-meta-row{
+  display:flex;gap:24px;flex-wrap:wrap;
+  margin-top:20px;padding-top:16px;
+  border-top:1px solid var(--divider-subtle);
+  font-size:13px;color:var(--fg-secondary);
+  font-family:var(--font-sans);font-weight:400;
+}
+.detail-meta-row b{color:var(--fg);font-weight:500}
+
+.comments-section{margin-top:0}
+.comments-head{
+  display:flex;align-items:center;gap:12px;
+  padding:20px 0;border-bottom:1px solid var(--divider-subtle);
+  margin-bottom:0;
+}
+.comments-head h3{
+  font-size:16px;font-weight:600;
+  font-family:var(--font-serif);
+}
+.comments-head .count{
+  font-size:12px;color:var(--fg-secondary);
+  background:none;
+  padding:0;border-radius:0;border:none;
+  font-family:var(--font-sans);font-weight:300;
+}
+.comment-list{display:flex;flex-direction:column;gap:0}
+.comment{
+  display:flex;gap:14px;
+  padding:14px 0;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.comment:last-child{border-bottom:none}
+.comment.has-parent{
+  /* 发言本身无缩进，只有被引用内容缩进 */
+}
+.avatar{
+  width:32px;height:32px;border-radius:50%;flex:none;
+  border:none;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:500;
+  font-family:var(--font-sans);
+  color:#fff;
+}
+/* 评论者头像配色：按 name 哈希分配浅色系 */
+.avatar.c0{background:#A8C5E2}
+.avatar.c1{background:#C2B8E8}
+.avatar.c2{background:#F4C2C2}
+.avatar.c3{background:#B8D8C8}
+.avatar.c4{background:#E8D5B5}
+.avatar.c5{background:#D4C5E2}
+.avatar.c6{background:#B5D0E8}
+.avatar.c7{background:#E2C8B8}
+/* 洞主头像：北大红浅色 */
+.avatar.op{background:#C8A9A9}
+.comment-body{flex:1;min-width:0}
+.comment-head{
+  display:flex;align-items:center;gap:10px;
+  margin-bottom:6px;flex-wrap:wrap;
+}
+.cname{
+  font-size:13px;font-weight:500;color:var(--fg);
+  font-family:var(--font-sans);
+}
+.ctime{
+  font-size:12px;color:var(--fg-tertiary);
+  font-family:var(--font-sans);font-weight:300;
+}
+.cref{
+  font-size:11px;color:var(--fg-secondary);
+  font-family:var(--mono);
+  background:none;padding:0;border-radius:0;
+}
+.ctext{
+  font-size:14px;white-space:pre-wrap;word-break:break-word;
+  color:var(--fg);line-height:1.7;font-weight:400;
+}
+.cquote{
+  font-size:13px;color:var(--fg-secondary);
+  border-left:2px solid var(--divider);
+  padding:4px 14px;margin:0 0 8px 20px;
+  background:var(--bg-hover);
+  border-radius:0;
+  white-space:pre-wrap;word-break:break-word;
+  font-weight:400;
+}
+
+/* ==================== AI 报告 · 克制布局 ==================== */
+.report-grid{
+  display:grid;grid-template-columns:300px 1fr;gap:32px;
+  align-items:start;
+}
+.report-controls{
+  padding:0;display:flex;flex-direction:column;gap:20px;
+  position:sticky;top:80px;
+}
+.report-section-label{
+  font-size:12px;color:var(--fg-secondary);
+  font-weight:400;letter-spacing:0.06em;
+  margin-bottom:12px;
+  font-family:var(--font-sans);
+}
+
+/* 模式切换 · 细横线 */
+.mode-switch{
+  display:flex;gap:0;
+  border:none;border-radius:0;overflow:visible;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.mode-switch button{
+  flex:1;padding:10px 12px;font-size:14px;font-weight:400;
+  color:var(--fg-secondary);background:none;
+  transition:color .2s;
+  border:none;
+  border-bottom:2px solid transparent;
+  font-family:var(--font-serif);
+  margin-bottom:-1px;
+}
+.mode-switch button:not(:last-child){border-right:none}
+.mode-switch button.active{
+  background:none;color:var(--fg);
+  font-weight:500;border-bottom-color:var(--fg);
+}
+
+/* Provider 列表 · 细横线 */
+.provider-list{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--divider-subtle)}
+.provider-item{
+  border:none;
+  border-radius:0;
+  background:none;
+  overflow:hidden;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.provider-item.configured.selected,
+.provider-item.custom.selected{
+  border-color:var(--divider-subtle);
+  box-shadow:inset 2px 0 0 var(--fg);
+}
+.provider-head{
+  display:flex;align-items:center;gap:10px;
+  padding:16px 0;cursor:pointer;
+  transition:background .15s;
+}
+.provider-head:hover{background:none}
+.provider-head .pn{
+  font-size:14px;font-weight:500;
+  text-transform:capitalize;color:var(--fg);
+  font-family:var(--font-serif);
+}
+.provider-head .pm{
+  font-size:12px;color:var(--fg-tertiary);
+  font-family:var(--mono);font-weight:300;
+}
+.provider-head .pbadge{
+  margin-left:auto;font-size:10px;font-weight:400;
+  padding:2px 8px;border-radius:999px;
+  letter-spacing:0.03em;
+  font-family:var(--font-sans);
+}
+.provider-head .pbadge.ok{
+  background:var(--divider-subtle);color:var(--fg-secondary);border:none;
+}
+.provider-head .pbadge.no{
+  background:var(--divider-subtle);color:var(--fg-secondary);border:none;
+}
+.provider-head .pcheck{
+  width:14px;height:14px;border-radius:50%;
+  border:1.5px solid var(--divider);
+  flex:none;transition:.15s;
+}
+.provider-item.selected .pcheck{
+  border-color:var(--fg);
+  background:var(--fg);
+  position:relative;
+}
+.provider-item.selected .pcheck::after{
+  content:"";position:absolute;left:3.5px;top:1px;
+  width:3px;height:7px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);
+}
+.provider-custom{
+  display:none;padding:12px 0 16px;
+  border-top:1px solid var(--divider-subtle);
+  background:none;
+}
+.provider-custom.show{display:block}
+.provider-custom .field{margin-bottom:12px}
+.provider-custom .field:last-child{margin-bottom:0}
+
+.report-output{min-height:400px}
+.report-card{
+  padding:0;min-height:400px;
+  background:none;border:none;border-radius:0;box-shadow:none;
+}
+.report-placeholder{
+  text-align:center;padding:48px 24px;color:var(--fg-secondary);
+  font-weight:400;
+}
+.report-placeholder svg{
+  width:32px;height:32px;color:var(--fg-tertiary);
+  margin-bottom:16px;
+}
+.report-placeholder h3{
+  font-size:18px;color:var(--fg);font-weight:600;
+  margin-bottom:8px;
+  font-family:var(--font-serif);letter-spacing:-0.02em;
+}
+.report-placeholder p{
+  font-size:14px;max-width:380px;margin:0 auto;
+  line-height:1.75;
+  font-family:var(--font-sans);
+}
+
+/* 报告加载中 */
+.report-loading{padding:64px 24px;text-align:center}
+.report-loading .lt{
+  font-size:16px;font-weight:500;margin-top:20px;
+  font-family:var(--font-serif);
+}
+.report-loading .ls{
+  font-size:13px;color:var(--fg-secondary);margin-top:8px;
+  font-family:var(--font-sans);font-weight:300;
+}
+.report-loading .elapsed{
+  font-family:var(--mono);font-size:13px;
+  color:var(--fg-secondary);margin-top:16px;font-weight:300;
+}
+.progress-track{
+  max-width:320px;margin:24px auto 0;
+  height:2px;border-radius:1px;
+  background:var(--divider-subtle);
+  border:none;
+  overflow:hidden;position:relative;
+}
+.progress-bar{
+  position:absolute;inset:0;width:40%;border-radius:1px;
+  background:var(--fg);
+  animation:slide 1.6s ease-in-out infinite;
+}
+@keyframes slide{0%{left:-40%}100%{left:100%}}
+
+.report-toolbar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:24px;padding-bottom:16px;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.report-toolbar .rt-info{
+  font-size:12px;color:var(--fg-secondary);
+  font-family:var(--font-sans);font-weight:300;
+}
+.report-toolbar .rt-info .dot{color:var(--success)}
+
+/* ==================== Markdown 渲染 · 优雅排版 ==================== */
+.markdown{
+  font-size:15px;line-height:1.8;color:var(--fg);
+  max-width:100%;font-weight:400;
+  font-family:var(--font-serif);letter-spacing:0.01em;
+}
+.markdown h1,.markdown h2,.markdown h3,.markdown h4,.markdown h5,.markdown h6{
+  font-weight:600;line-height:1.3;
+  margin-top:28px;margin-bottom:14px;
+  letter-spacing:-0.02em;
+}
+.markdown h1{
+  font-size:1.8em;padding-bottom:12px;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.markdown h2{
+  font-size:1.4em;padding-bottom:10px;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.markdown h3{font-size:1.2em}
+.markdown h4{font-size:1.05em}
+.markdown p{margin:0 0 14px}
+.markdown ul,.markdown ol{margin:0 0 14px;padding-left:1.8em}
+.markdown li{margin-top:6px}
+.markdown li::marker{color:var(--fg-secondary)}
+.markdown a{color:var(--accent-blue);text-decoration:none}
+.markdown a:hover{text-decoration:underline;opacity:1}
+.markdown strong{font-weight:600}
+.markdown em{font-style:italic}
+.markdown blockquote{
+  padding:6px 16px;color:var(--fg-secondary);
+  border-left:2px solid var(--divider);
+  margin:0 0 14px;font-weight:400;
+}
+.markdown blockquote p{margin:6px 0}
+.markdown code{
+  font-family:var(--mono);font-size:85%;
+  background:var(--bg-hover);
+  color:var(--fg);
+  padding:2px 6px;border-radius:var(--radius-sm);
+}
+.markdown pre{
+  background:var(--bg-elevated);
+  border:1px solid var(--divider-subtle);
+  border-radius:var(--radius);padding:16px;
+  overflow:auto;margin:0 0 14px;
+}
+.markdown pre code{
+  background:none;padding:0;font-size:85%;color:var(--fg);
+}
+.markdown hr{
+  height:1px;padding:0;margin:24px 0;
+  background:var(--divider-subtle);border:0;
+}
+.markdown table{
+  width:100%;border-collapse:collapse;
+  margin:0 0 14px;font-size:14px;display:block;
+  width:max-content;max-width:100%;overflow:auto;
+}
+.markdown th,.markdown td{
+  border:1px solid var(--divider-subtle);
+  padding:8px 14px;text-align:left;
+}
+.markdown th{background:var(--bg-hover);font-weight:500}
+.markdown tr:nth-child(2n){background:var(--bg)}
+.markdown img{max-width:100%;border-radius:var(--radius-sm)}
+
+/* ==================== 响应式 ==================== */
+/* ==================== 关于页面 ==================== */
+.about-wrap{max-width:560px;margin:0 auto;padding:8px 0 32px}
+.about-hero{text-align:center;padding:24px 0 40px;border-bottom:1px solid var(--divider-subtle);margin-bottom:40px}
+.about-logo{width:56px;height:56px;opacity:0.9;margin-bottom:16px}
+.about-name{font-size:28px;font-weight:600;letter-spacing:-0.03em;color:var(--fg);margin-bottom:6px}
+.about-tagline{font-size:15px;color:var(--fg-secondary);font-weight:400}
+.about-section{margin-bottom:40px}
+.about-h{font-size:16px;font-weight:600;color:var(--fg);margin-bottom:12px;letter-spacing:-0.01em}
+.about-p{font-size:14px;color:var(--fg-secondary);line-height:1.8;font-weight:400}
+.about-warn{color:#B87878;padding:14px 16px;background:#FAF0F0;border-radius:var(--radius-sm)}
+.about-field{margin-bottom:16px}
+.about-field label{display:block;font-size:12px;color:var(--fg-secondary);margin-bottom:6px;font-weight:400}
+.about-textarea{
+  width:100%;background:var(--bg-elevated);
+  border:1px solid var(--divider);border-radius:var(--radius-sm);
+  padding:12px;font-size:14px;color:var(--fg);
+  font-family:var(--font-serif);line-height:1.7;
+  outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s;
+}
+.about-textarea:focus{border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(0,113,227,0.12)}
+.about-msg-area{min-height:20px;margin-bottom:12px;font-size:13px}
+
+@media (max-width:900px){
+  .report-grid{grid-template-columns:1fr;gap:24px}
+  .report-controls{position:static}
+  .container{padding:28px 20px 56px}
+  .section-title{font-size:22px}
+  .section-head{margin-bottom:20px}
+}
+@media (max-width:640px){
+  .header-inner{padding:10px 14px;gap:10px}
+  .header-logo{width:30px;height:30px}
+  .header-title{font-size:15px;gap:8px}
+  .header-tagline{display:none}
+  .header-tabs{gap:14px;margin-left:auto}
+  .tab-btn{font-size:13px}
+  .container{padding:20px 14px 40px}
+  .section-title{font-size:19px}
+  .section-sub{font-size:12px}
+  .section-head{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:18px}
+  .os-refresh{font-size:11px}
+  .os-title{font-size:18px}
+  .os-badge{font-size:10px;padding:2px 8px}
+  .toolbar{flex-direction:column;align-items:stretch;gap:12px}
+  .toolbar .input,.toolbar select.input{width:100%}
+  .btn{width:100%}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .stat-card{padding:14px 12px;border-right:1px solid var(--divider-subtle);border-bottom:1px solid var(--divider-subtle)}
+  .stat-card:nth-child(2n){border-right:none}
+  .stat-card .stat-value{font-size:20px}
+  .stat-card .stat-label{font-size:11px}
+  .stats-note{font-size:11px;text-align:left}
+  .bubble-grid{grid-template-columns:1fr}
+  .bubble-card{border-right:none;padding:16px 0}
+  .bubble-card .bc-text{font-size:13px;-webkit-line-clamp:5;max-height:7.5em}
+  .bubble-card .bc-footer{gap:12px;font-size:11px}
+  .detail-post{padding:16px 0}
+  .detail-text{font-size:15px;line-height:1.75}
+  .detail-meta-row{gap:14px 20px;font-size:12px}
+  .detail-meta-row a{margin-left:0!important;width:100%;text-align:center;padding-top:8px;border-top:1px solid var(--divider-subtle)}
+  .post-item{flex-direction:column;gap:10px;padding:14px 0}
+  .post-item:hover{padding-left:0;box-shadow:none}
+  .post-item-aside{margin-left:0;gap:14px;font-size:12px}
+  .post-images img{max-width:140px;max-height:140px}
+  .report-card{padding:0}
+  .report-placeholder{padding:32px 16px}
+  .report-placeholder h3{font-size:16px}
+  .report-placeholder p{font-size:13px}
+  .markdown{font-size:14px;line-height:1.75}
+  .markdown h1{font-size:1.5em;padding-bottom:8px}
+  .markdown h2{font-size:1.25em;padding-bottom:6px}
+  .markdown h3{font-size:1.1em}
+  .markdown ul,.markdown ol{padding-left:1.4em}
+  .markdown blockquote{padding:4px 12px}
+  .markdown table{display:block;overflow-x:auto;font-size:13px;-webkit-overflow-scrolling:touch}
+  .markdown pre{font-size:12px;padding:12px}
+  .comment{padding:12px 0;gap:10px}
+  .avatar{width:28px;height:28px;font-size:12px}
+  .cname{font-size:12px}
+  .ctext{font-size:13px;line-height:1.65}
+  .cquote{font-size:12px;padding:4px 10px;margin:0 0 6px 12px}
+  .comment-head{gap:8px}
+  .provider-head{padding:12px 0;gap:8px;flex-wrap:wrap}
+  .provider-head .pn{font-size:13px}
+  .provider-head .pm{font-size:11px}
+  .provider-head .pbadge{font-size:9px;padding:2px 6px}
+  .provider-custom .input{font-size:13px}
+  .report-controls{gap:16px}
+  .report-section-label{margin-bottom:8px}
+  .mode-switch button{padding:8px 8px;font-size:13px}
+  .flash{font-size:13px;padding:10px 14px;margin:0 8px}
+  .flash-wrap{padding:8px}
+  .detail-pid-copy{padding:3px 6px 3px 0}
+  .detail-pid-copy .copy-icon{width:12px;height:12px}
+  .fab-back{right:16px;bottom:16px;width:40px;height:40px}
+  .dist-row{gap:16px;padding:14px 4px 12px}
+  .dist-donut{width:72px;height:72px}
+  .dist-donut .dist-num{font-size:15px}
+  .dist-donut .dist-num-label{font-size:8px}
+  .dist-legend{grid-template-columns:repeat(2,1fr);gap:5px 10px;font-size:11px}
+}
+@media (max-width:380px){
+  .header-title{font-size:14px}
+  .header-logo{width:26px;height:26px}
+  .tab-btn{font-size:12px}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .stat-card .stat-value{font-size:18px}
+}
+
+/* ==================== 邮箱验证遮罩 ==================== */
+.auth-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+.auth-overlay.hidden{display:none}
+
+/* ==================== 承诺窗口 ==================== */
+.pledge-overlay{
+  position:fixed;inset:0;z-index:9998;
+  background:rgba(245,245,247,0.96);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+.pledge-overlay.hidden{display:none}
+.pledge-card{
+  max-width:440px;width:100%;text-align:center;
+  background:var(--bg-elevated);
+  border-radius:12px;
+  padding:40px 32px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
+.pledge-card .pledge-icon{
+  width:56px;height:56px;margin:0 auto 24px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:50%;
+  background:#F0EBF8;color:#8B7BB8;
+}
+.pledge-card h2{
+  font-size:20px;font-weight:600;color:var(--fg);
+  letter-spacing:-0.02em;margin-bottom:16px;
+}
+.pledge-card .pledge-text{
+  font-size:14px;color:var(--fg-secondary);
+  line-height:1.8;margin-bottom:28px;
+}
+.pledge-card .pledge-btn{
+  display:inline-block;padding:10px 32px;
+  border-radius:var(--radius-sm);
+  font-size:14px;font-weight:500;
+  background:var(--accent);color:#fff;border:none;
+  cursor:pointer;transition:background .2s;
+  font-family:var(--font-sans);
+}
+.pledge-card .pledge-btn:hover{background:#000}
+
+/* ==================== 站长信箱弹窗（未登录可用） ==================== */
+.msg-overlay{
+  position:fixed;inset:0;z-index:10000;
+  background:rgba(245,245,247,0.96);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;
+}
+.msg-overlay.hidden{display:none}
+.msg-card{
+  max-width:420px;width:100%;
+  background:var(--bg-elevated);
+  border-radius:12px;
+  padding:32px 28px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+  position:relative;
+}
+.msg-card .msg-close{
+  position:absolute;top:14px;right:16px;
+  width:28px;height:28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--fg-tertiary);font-size:20px;line-height:1;
+  cursor:pointer;transition:background .2s,color .2s;
+}
+.msg-card .msg-close:hover{background:var(--bg-hover);color:var(--fg)}
+.msg-card h2{
+  font-size:18px;font-weight:600;color:var(--fg);
+  letter-spacing:-0.02em;margin-bottom:8px;
+}
+.msg-card .msg-sub{
+  font-size:13px;color:var(--fg-secondary);
+  line-height:1.7;margin-bottom:20px;
+}
+.msg-card .msg-field{margin-bottom:14px;text-align:left}
+.msg-card .msg-field label{
+  display:block;font-size:12px;color:var(--fg-secondary);
+  margin-bottom:6px;font-weight:400;
+}
+.msg-card .msg-input,.msg-card .msg-textarea{
+  width:100%;background:var(--bg);
+  border:1px solid var(--divider);border-radius:var(--radius-sm);
+  padding:10px 12px;font-size:14px;color:var(--fg);
+  outline:none;transition:border-color .2s,box-shadow .2s;
+  font-family:var(--font-sans);
+}
+.msg-card .msg-input:focus,.msg-card .msg-textarea:focus{
+  border-color:var(--accent-blue);
+  box-shadow:0 0 0 3px rgba(0,113,227,0.12);
+}
+.msg-card .msg-textarea{resize:vertical;line-height:1.7}
+.msg-card .msg-area{min-height:20px;margin-bottom:12px;font-size:13px}
+.msg-card .msg-btn{
+  width:100%;padding:11px;border-radius:var(--radius-sm);
+  background:var(--accent);color:#fff;border:none;
+  font-size:14px;font-weight:500;cursor:pointer;
+  font-family:var(--font-sans);transition:background .2s;
+}
+.msg-card .msg-btn:hover{background:#000}
+.msg-card .msg-btn:disabled{opacity:.5;cursor:not-allowed}
+.auth-card{
+  max-width:380px;width:100%;text-align:center;
+}
+.auth-card .auth-logo{
+  width:48px;height:48px;margin:0 auto 20px;opacity:0.8;
+}
+.auth-card h2{
+  font-size:22px;font-weight:600;color:var(--fg);
+  letter-spacing:-0.02em;margin-bottom:6px;
+}
+.auth-card .auth-tagline{
+  font-size:14px;color:var(--fg-secondary);font-weight:400;
+  margin-bottom:20px;letter-spacing:0.02em;
+  padding-bottom:16px;border-bottom:1px solid var(--divider-subtle);
+}
+.auth-card .auth-sub{
+  font-size:13px;color:var(--fg-tertiary);
+  margin-bottom:20px;line-height:1.6;
+}
+.auth-card .auth-field{
+  margin-bottom:12px;text-align:left;
+}
+.auth-card .auth-field label{
+  display:block;font-size:12px;color:var(--fg-secondary);
+  margin-bottom:4px;font-weight:400;
+}
+.auth-card .auth-input{
+  width:100%;background:var(--bg-elevated);
+  border:1px solid var(--divider);border-radius:var(--radius-sm);
+  padding:10px 14px;font-size:14px;color:var(--fg);
+  outline:none;transition:border-color .2s,box-shadow .2s;
+  font-family:var(--font-sans);
+}
+.auth-card .auth-input:focus{
+  border-color:var(--accent-blue);
+  box-shadow:0 0 0 3px rgba(0,113,227,0.12);
+}
+.auth-card .auth-input.code-input{
+  text-align:center;letter-spacing:6px;font-size:18px;font-weight:500;
+}
+.auth-card .auth-btn{
+  width:100%;padding:11px;border-radius:var(--radius-sm);
+  background:var(--accent);color:#fff;border:none;
+  font-size:14px;font-weight:500;cursor:pointer;
+  font-family:var(--font-sans);transition:background .2s;
+  margin-top:4px;
+}
+.auth-card .auth-btn:hover{background:#000}
+.auth-card .auth-btn:disabled{opacity:.5;cursor:not-allowed}
+.auth-card .auth-hint{
+  font-size:11px;color:var(--fg-tertiary);margin-top:16px;
+  line-height:1.5;
+}
+.auth-card .auth-resend{
+  font-size:12px;color:var(--accent-blue);cursor:pointer;
+  margin-top:8px;display:inline-block;
+}
+.auth-card .auth-resend:hover{opacity:.7}
+.auth-card .auth-error{
+  font-size:12px;color:var(--danger);margin-top:8px;
+}
+.auth-card .auth-tabs{
+  display:flex;gap:0;margin-bottom:20px;
+  border-bottom:1px solid var(--divider-subtle);
+}
+.auth-card .auth-tab{
+  flex:1;padding:8px 0;font-size:13px;font-weight:400;
+  color:var(--fg-tertiary);cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:color .2s,border-color .2s;
+  font-family:var(--font-serif);background:none;border-top:none;border-left:none;border-right:none;
+}
+.auth-card .auth-tab.active{color:var(--fg);font-weight:500;border-bottom-color:var(--fg)}
+.auth-card .auth-tab:hover{color:var(--fg-secondary)}
+.auth-card .auth-mode{display:none}
+.auth-card .auth-mode.active{display:block;animation:fadeIn .3s ease}
+@media(max-width:640px){
+  .auth-card{max-width:320px}
+}
+</style>
+</head>
+<body>
+
+<!-- 邮箱验证遮罩 -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <svg class="auth-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="24" cy="20" rx="11" ry="12" fill="#C8A9A9"/>
+      <ellipse cx="15" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(-20 15 10)"/>
+      <ellipse cx="33" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(20 33 10)"/>
+      <circle cx="20" cy="18" r="1.8" fill="#1D1D1F"/>
+      <circle cx="28" cy="18" r="1.8" fill="#1D1D1F"/>
+      <ellipse cx="24" cy="24" rx="2" ry="1.2" fill="#B87878"/>
+    </svg>
+    <h2 id="authTitle">AutoTreehole</h2>
+    <p class="auth-tagline">不再错过每一条有价值的树洞</p>
+
+    <!-- 切换 Tab -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-mode="email">校园邮箱</button>
+      <button class="auth-tab" data-mode="invite">邀请码</button>
+    </div>
+
+    <!-- 邮箱验证模式 -->
+    <div class="auth-mode active" id="modeEmail">
+      <p class="auth-sub">校园邮箱验证 · 仅限北京大学师生访问</p>
+      <!-- 步骤1：输入邮箱 -->
+      <div id="authStep1">
+        <div class="auth-field">
+          <label>校园邮箱</label>
+          <input type="email" class="auth-input" id="authEmail" placeholder="yourname@stu.pku.edu.cn" autocomplete="email">
+        </div>
+        <div class="auth-error" id="authError1"></div>
+        <button class="auth-btn" id="authSendBtn">发送验证码</button>
+        <p class="auth-hint">支持 @pku.edu.cn 和 @stu.pku.edu.cn 邮箱</p>
+      </div>
+      <!-- 步骤2：输入验证码 -->
+      <div id="authStep2" style="display:none">
+        <div class="auth-field">
+          <label>验证码（6位数字）</label>
+          <input type="text" class="auth-input code-input" id="authCode" placeholder="000000" maxlength="6" inputmode="numeric">
+        </div>
+        <div class="auth-error" id="authError2"></div>
+        <button class="auth-btn" id="authVerifyBtn">验证</button>
+        <span class="auth-resend" id="authResend">重新发送验证码</span>
+        <p class="auth-hint" id="authEmailHint"></p>
+      </div>
+    </div>
+
+    <!-- 邀请码模式 -->
+    <div class="auth-mode" id="modeInvite">
+      <p class="auth-sub">持有邀请码？直接输入即可进入</p>
+      <div class="auth-field">
+        <label>邀请码</label>
+        <input type="text" class="auth-input" id="inviteCode" placeholder="ABCDEFGH" maxlength="20" style="text-transform:uppercase" autocomplete="off">
+      </div>
+      <div class="auth-error" id="inviteError"></div>
+      <button class="auth-btn" id="inviteBtn">进入</button>
+      <p class="auth-hint"><a href="javascript:void(0)" id="getInviteCodeLink">获取邀请码</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- 承诺窗口 -->
+<div class="pledge-overlay hidden" id="pledgeOverlay">
+  <div class="pledge-card">
+    <div class="pledge-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L4 5v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V5l-8-3z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+    </div>
+    <h2>欢迎来到 AutoTreehole</h2>
+    <p class="pledge-text">本站得以长存，有赖于每一位用户的默契。<br>为避免站点被迫关停，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。<br><br>你的承诺，是本站继续服务大家的基石。</p>
+    <button class="pledge-btn" id="pledgeBtn">我承诺</button>
+  </div>
+</div>
+
+<!-- 站长信箱弹窗（未登录访客可用，如：获取邀请码） -->
+<div class="msg-overlay hidden" id="msgOverlay">
+  <div class="msg-card">
+    <button class="msg-close" id="msgClose" aria-label="关闭">×</button>
+    <h2>站长信箱</h2>
+    <p class="msg-sub">想获取邀请码？请留下你的联系方式和想说的话，站长会尽快与你联系并发送邀请码。</p>
+    <div class="msg-field">
+      <label>联系方式（必填）</label>
+      <input type="text" id="pubMsgContact" class="msg-input" placeholder="邮箱 / 微信 / 其他" maxlength="200">
+    </div>
+    <div class="msg-field">
+      <label>留言内容</label>
+      <textarea id="pubMsgContent" class="msg-textarea" rows="4" placeholder="请说明你的身份…" maxlength="5000"></textarea>
+    </div>
+    <div class="msg-area" id="pubMsgArea"></div>
+    <button class="msg-btn" id="pubMsgSubmit">发送留言</button>
+  </div>
+</div>
+
+<!-- Flash banner 容器（顶部固定） -->
+<div class="flash-wrap" id="flashWrap"></div>
+
+<!-- 顶部导航栏 -->
+<header class="header">
+  <div class="header-inner">
+    <div class="header-title">
+      <svg class="header-logo" id="logoKangaroo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- 袋鼠头部 -->
+        <ellipse cx="24" cy="20" rx="11" ry="12" fill="#C8A9A9"/>
+        <!-- 耳朵 -->
+        <ellipse cx="15" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(-20 15 10)"/>
+        <ellipse cx="33" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(20 33 10)"/>
+        <ellipse cx="15" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(-20 15 11)"/>
+        <ellipse cx="33" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(20 33 11)"/>
+        <!-- 眼睛 -->
+        <circle cx="20" cy="18" r="1.8" fill="#1D1D1F"/>
+        <circle cx="28" cy="18" r="1.8" fill="#1D1D1F"/>
+        <circle cx="20.5" cy="17.5" r="0.6" fill="#fff"/>
+        <circle cx="28.5" cy="17.5" r="0.6" fill="#fff"/>
+        <!-- 鼻子 -->
+        <ellipse cx="24" cy="24" rx="2.2" ry="1.5" fill="#1D1D1F"/>
+        <!-- 嘴巴 -->
+        <path d="M22 26.5 Q24 28 26 26.5" stroke="#1D1D1F" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+        <!-- 腮红 -->
+        <circle cx="16" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
+        <circle cx="32" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
+        <!-- 身体上半身 -->
+        <ellipse cx="24" cy="40" rx="14" ry="10" fill="#C8A9A9"/>
+        <!-- 小爪子 -->
+        <ellipse cx="16" cy="42" rx="3" ry="4" fill="#B89898"/>
+        <ellipse cx="32" cy="42" rx="3" ry="4" fill="#B89898"/>
+      </svg>
+      AutoTreehole<span class="header-tagline">不再错过每一条有价值的树洞</span>
+    </div>
+    <nav class="header-tabs" id="headerTabs">
+      <button class="tab-btn active" data-panel="overview">概览</button>
+      <button class="tab-btn" data-panel="hot">热帖</button>
+      <button class="tab-btn" data-panel="report">AI报告</button>
+      <button class="tab-btn" data-panel="detail">详情</button>
+      <button class="tab-btn" data-panel="about">关于</button>
+    </nav>
+  </div>
+</header>
+
+<!-- 主内容区 -->
+<main class="container">
+
+  <!-- ========== 概览 ========== -->
+  <section class="panel active" id="panel-overview">
+    <div class="section-head">
+      <div>
+        <div class="section-title">数据概览</div>
+        <div class="section-sub">实时统计 · 热门速览 · 最近动态</div>
+      </div>
+      <div class="os-refresh">
+        <span class="live-dot"></span>
+        <span id="lastRefreshTime">加载中…</span>
+        <button class="btn-refresh" id="manualRefreshBtn" title="手动刷新数据" style="background:none;border:none;cursor:pointer;padding:4px;display:inline-flex;align-items:center;color:var(--fg-secondary);transition:color .2s,transform .3s">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8a6 6 0 1 1-1.76-4.24"/><polyline points="14 2 14 5 11 5"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="stats-grid" id="statsGrid"></div>
+    <div class="stats-note" id="statsNote">数据跨度：—</div>
+
+    <!-- 话题分布 · 环形图（内嵌统计区） -->
+    <div class="dist-row" id="distRow">
+      <div class="dist-donut" id="distDonut"></div>
+      <div class="dist-legend" id="distLegend"></div>
+    </div>
+
+    <!-- 热门速览 -->
+    <div class="overview-section">
+      <div class="os-head">
+        <div>
+          <div class="os-title">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="color:var(--fg-secondary)"><path d="M8 1.5c-1.735 0-3.29.93-4.27 2.477C2.674 5.703 2.5 7.017 2.5 8.25c0 1.233.174 2.547 1.23 4.273C4.71 14.07 6.265 15 8 15s3.29-.93 4.27-2.477C13.326 10.797 13.5 9.483 13.5 8.25c0-1.233-.174-2.547-1.23-4.273C11.29 2.43 9.735 1.5 8 1.5z"/></svg>
+            热门速览
+            <span class="os-badge">近 7 天 · 收藏 ≥ 10</span>
+          </div>
+          <div class="os-sub">点击卡片查看完整内容与评论</div>
+        </div>
+      </div>
+      <div class="bubble-grid" id="bubbleGrid">
+        <div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--fg-secondary)">
+          <span class="spinner spinner-lg"></span>
+          <div style="margin-top:12px;font-size:14px;font-weight:300">正在加载热门帖子…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 热帖（含关键词搜索） ========== -->
+  <section class="panel" id="panel-hot">
+    <div class="section-head">
+      <div>
+        <div class="section-title">热门帖子</div>
+        <div class="section-sub">按收藏量降序展示高热度内容，关键词模式模糊匹配正文</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="mode-switch" id="hotModeSwitch" style="width:100%;margin-bottom:4px">
+        <button class="active" data-mode="hot">默认筛选</button>
+        <button data-mode="keyword">关键词匹配</button>
+      </div>
+      <div class="field" id="hotKeywordField" style="display:none;flex:1;min-width:200px">
+        <label>关键词（模糊匹配正文）</label>
+        <input type="text" id="hotKeyword" class="input" placeholder="如 期末 / 保研 / 选课" maxlength="80">
+      </div>
+      <div class="field">
+        <label>天数</label>
+        <input type="number" id="hotDays" class="input input-sm" value="7" min="1" max="90">
+      </div>
+      <div class="field">
+        <label>数量</label>
+        <input type="number" id="hotLimit" class="input input-sm" value="20" min="1" max="100">
+      </div>
+      <button class="btn btn-primary" id="loadHot">获取</button>
+    </div>
+    <div id="hotList"></div>
+  </section>
+
+  <!-- ========== AI 报告 ========== -->
+  <section class="panel" id="panel-report">
+    <div class="section-head">
+      <div>
+        <div class="section-title">AI 智能报告</div>
+        <div class="section-sub">调用大模型生成结构化分析，报告内洞号可点击跳转</div>
+      </div>
+    </div>
+    <div class="report-grid">
+      <!-- 左侧控制面板 -->
+      <div class="card report-controls">
+        <div>
+          <div class="report-section-label">报告模式</div>
+          <div class="mode-switch" id="modeSwitch">
+            <button class="active" data-mode="week">全周分析</button>
+            <button data-mode="keyword">关键词专题</button>
+          </div>
+        </div>
+
+        <div id="keywordField" style="display:none">
+          <div class="report-section-label">关键词</div>
+          <input type="text" id="reportKeyword" class="input" placeholder="如：保研 夏令营 推免" maxlength="80" style="width:100%">
+        </div>
+
+        <div>
+          <div class="report-section-label">分析天数</div>
+          <input type="number" id="reportDays" class="input" value="7" min="1" max="90" style="width:100%">
+        </div>
+
+        <div>
+          <div class="report-section-label">LLM 服务</div>
+          <div class="provider-list" id="providerList">
+            <div style="padding:16px 0;color:var(--fg-secondary);font-size:13px;font-family:var(--font-sans);font-weight:300">
+              <span class="spinner"></span> 加载模型列表…
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="genReport" style="margin-top:8px">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 0110.93-4.763L8.5 6.5l4-1.5-1.5 4 3.263-3.93A6.5 6.5 0 011.5 8z"/></svg>
+          生成报告
+        </button>
+        <div style="font-size:12px;color:var(--fg-secondary);line-height:1.6;font-family:var(--font-sans);font-weight:300">
+          报告生成需调用大模型，通常耗时 1–2 分钟。报告内 <code style="font-family:var(--mono)">[#pid]</code> 链接可跳转树洞网页，文末附被引用帖子原文。
+        </div>
+      </div>
+
+      <!-- 右侧报告输出 -->
+      <div class="report-output">
+        <div class="card report-card" id="reportCard">
+          <div class="report-placeholder" id="reportPlaceholder">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75zm1.75-.25a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V1.75a.25.25 0 00-.25-.25H1.75zM3 3.75A.75.75 0 013.75 3h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 013 3.75zm0 4A.75.75 0 013.75 7h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 013 7.75zm0 4a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75z"/></svg>
+            <h3>尚未生成报告</h3>
+            <p>选择模式与模型，点击「生成报告」开始分析。全周模式总结近期热点与社区情绪，关键词模式聚焦特定主题。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 帖子详情 ========== -->
+  <section class="panel" id="panel-detail">
+    <div class="section-head">
+      <div>
+        <div class="section-title">帖子详情</div>
+        <div class="section-sub">输入洞号查看完整正文与评论</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="field" style="flex:1;min-width:200px">
+        <label>帖子编号 PID</label>
+        <input type="text" id="detailPid" class="input" placeholder="如 8390193" inputmode="numeric">
+      </div>
+      <button class="btn btn-primary" id="loadDetail">查看详情</button>
+    </div>
+    <div id="detailArea"></div>
+  </section>
+
+  <!-- ========== 关于 ========== -->
+  <section class="panel" id="panel-about">
+    <div class="about-wrap">
+      <div class="about-hero">
+        <svg class="about-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="24" cy="20" rx="11" ry="12" fill="#C8A9A9"/>
+          <ellipse cx="15" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(-20 15 10)"/>
+          <ellipse cx="33" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(20 33 10)"/>
+          <ellipse cx="15" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(-20 15 11)"/>
+          <ellipse cx="33" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(20 33 11)"/>
+          <circle cx="20" cy="18" r="1.8" fill="#1D1D1F"/>
+          <circle cx="28" cy="18" r="1.8" fill="#1D1D1F"/>
+          <circle cx="20.5" cy="17.5" r="0.6" fill="#fff"/>
+          <circle cx="28.5" cy="17.5" r="0.6" fill="#fff"/>
+          <ellipse cx="24" cy="24" rx="2.2" ry="1.5" fill="#1D1D1F"/>
+          <path d="M22 26.5 Q24 28 26 26.5" stroke="#1D1D1F" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+          <circle cx="16" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
+          <circle cx="32" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
+          <ellipse cx="24" cy="40" rx="14" ry="10" fill="#C8A9A9"/>
+          <ellipse cx="16" cy="42" rx="3" ry="4" fill="#B89898"/>
+          <ellipse cx="32" cy="42" rx="3" ry="4" fill="#B89898"/>
+        </svg>
+        <h1 class="about-name">AutoTreehole</h1>
+        <p class="about-tagline">不再错过每一条有价值的树洞</p>
+      </div>
+
+      <div class="about-section">
+        <h3 class="about-h">理念</h3>
+        <p class="about-p">AutoTreehole 是为北京大学师生打造的树洞数据聚合平台。你不必时时守着树洞刷屏，热点和趋势会自动呈现在你面前——节省时间，不错过值得关注的声音。</p>
+      </div>
+
+      <div class="about-section">
+        <h3 class="about-h">重要提醒</h3>
+        <p class="about-p about-warn">为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。你的默契，是本站继续服务大家的基石。</p>
+      </div>
+
+      <div class="about-section">
+        <h3 class="about-h">站长信箱</h3>
+        <p class="about-p" style="margin-bottom:20px">交流一下？</p>
+        <div class="about-field">
+          <label>留言内容</label>
+          <textarea id="msgContent" class="about-textarea" rows="5" placeholder="写下你想说的话…" maxlength="5000"></textarea>
+        </div>
+        <div class="about-field">
+          <label>联系方式（选填）</label>
+          <input type="text" id="msgContact" class="input" style="width:100%" placeholder="邮箱 / 微信 / 其他" maxlength="200">
+        </div>
+        <div class="about-msg-area" id="msgArea"></div>
+        <button class="btn btn-primary" id="msgSubmit">发送留言</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- 悬浮返回按钮（仅详情页显示） -->
+<button class="fab-back" id="detailBackBtn" title="返回原位置" aria-label="返回">
+  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12L6 8l4-4"/></svg>
+</button>
+
+<script>
+/* ============================================================
+ * 树洞分析 · 前端逻辑
+ * 单文件应用：API 调用 / 渲染 / 交互
+ * ============================================================ */
+
+// API 基础路径 — 同源部署下指向 /api，本地调试可改为你自己的后端地址
+const API_BASE = location.origin + '/api';
+
+// 状态
+let currentProvider = null;        // 当前选中的 provider 名称
+let currentProviderConfig = null;  // 当前 provider 的完整信息
+let currentMode = 'week';          // 报告模式
+let providersData = [];            // providers 列表
+
+/* ==================== 工具函数 ==================== */
+
+// 统一 fetch 封装（带指数退避重试）
+async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
+  const opts = Object.assign({headers:{'Content-Type':'application/json'}}, options);
+  if(opts.body && typeof opts.body === 'object') opts.body = JSON.stringify(opts.body);
+  let lastErr;
+  for(let i = 0; i <= retries; i++){
+    try{
+      const resp = await fetch(API_BASE + path, opts);
+      let data;
+      try{ data = await resp.json(); }
+      catch(e){ throw new Error('响应解析失败（HTTP ' + resp.status + '）'); }
+      if(!resp.ok){
+        const msg = (data && (data.error || data.message)) || ('HTTP ' + resp.status);
+        throw new Error(msg);
+      }
+      return data;
+    }catch(e){
+      if(e && e.name === 'AbortError') throw new Error('请求超时，请稍后重试（报告生成可能需要 1–2 分钟）');
+      lastErr = e;
+      if(i < retries){
+        const delay = retryDelay * Math.pow(2, i) + Math.random() * 300;
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw new Error('网络请求失败：' + (lastErr && lastErr.message ? lastErr.message : '未知错误'));
+}
+
+/* ==================== 邮箱验证与访问控制 ==================== */
+let authAuthorized = false;
+let authEmail = '';
+
+async function checkAuth(){
+  try{
+    const data = await api('/auth/check');
+    if(data.authorized){
+      authAuthorized = true;
+      authEmail = data.email;
+      document.getElementById('authOverlay').classList.add('hidden');
+      // 检查是否已承诺
+      if(!data.pledged){
+        document.getElementById('pledgeOverlay').classList.remove('hidden');
+        return true;
+      }
+      startTracking();
+      return true;
+    }
+  }catch(e){ /* ignore */ }
+  // 未授权，显示验证遮罩
+  document.getElementById('authOverlay').classList.remove('hidden');
+  return false;
+}
+
+async function acceptPledge(){
+  try{
+    await api('/auth/pledge', {method:'POST', body:{}});
+    document.getElementById('pledgeOverlay').classList.add('hidden');
+    startTracking();
+    if(typeof loadStats === 'function') loadStats();
+    if(typeof loadOverviewHot === 'function') loadOverviewHot();
+  }catch(e){
+    alert('提交失败，请重试');
+  }
+}
+
+function authSetError(step, msg){
+  const el = document.getElementById('authError' + step);
+  if(el) el.textContent = msg || '';
+}
+
+async function authSendCode(){
+  const email = (document.getElementById('authEmail').value || '').trim().toLowerCase();
+  if(!email){ authSetError(1, '请输入邮箱地址'); return; }
+  if(!email.endsWith('@pku.edu.cn') && !email.endsWith('@stu.pku.edu.cn')){
+    authSetError(1, '请使用 @pku.edu.cn 或 @stu.pku.edu.cn 邮箱');
+    return;
+  }
+  authSetError(1, '');
+  const btn = document.getElementById('authSendBtn');
+  btn.disabled = true; btn.textContent = '发送中…';
+  try{
+    const data = await api('/auth/sendCode', {method:'POST', body:{email}});
+    // 切换到步骤2
+    document.getElementById('authStep1').style.display = 'none';
+    document.getElementById('authStep2').style.display = 'block';
+    document.getElementById('authEmailHint').textContent = '验证码已发送至 ' + email;
+    document.getElementById('authCode').focus();
+  }catch(e){
+    authSetError(1, e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = '发送验证码';
+  }
+}
+
+async function authVerifyCode(){
+  const email = (document.getElementById('authEmail').value || '').trim().toLowerCase();
+  const code = (document.getElementById('authCode').value || '').trim();
+  if(!code || code.length !== 6){ authSetError(2, '请输入 6 位验证码'); return; }
+  authSetError(2, '');
+  const btn = document.getElementById('authVerifyBtn');
+  btn.disabled = true; btn.textContent = '验证中…';
+  try{
+    await api('/auth/verify', {method:'POST', body:{email, code}});
+    authAuthorized = true;
+    authEmail = email;
+    document.getElementById('authOverlay').classList.add('hidden');
+    // 新用户/未承诺用户：显示承诺窗口
+    document.getElementById('pledgeOverlay').classList.remove('hidden');
+  }catch(e){
+    authSetError(2, e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = '验证';
+  }
+}
+
+// 绑定验证按钮事件
+document.getElementById('authSendBtn').addEventListener('click', authSendCode);
+document.getElementById('authVerifyBtn').addEventListener('click', authVerifyCode);
+document.getElementById('authResend').addEventListener('click', () => {
+  document.getElementById('authStep2').style.display = 'none';
+  document.getElementById('authStep1').style.display = 'block';
+  authSetError(1, '');
+  document.getElementById('authEmail').focus();
+});
+document.getElementById('authCode').addEventListener('keydown', e => { if(e.key==='Enter') authVerifyCode(); });
+document.getElementById('authEmail').addEventListener('keydown', e => { if(e.key==='Enter') authSendCode(); });
+document.getElementById('pledgeBtn').addEventListener('click', acceptPledge);
+
+/* ==================== 邀请码登录 ==================== */
+async function inviteLogin(){
+  const code = document.getElementById('inviteCode').value.trim().toUpperCase();
+  const errEl = document.getElementById('inviteError');
+  const btn = document.getElementById('inviteBtn');
+  if(!code){ errEl.textContent = '请输入邀请码'; return; }
+  errEl.textContent = '';
+  btn.disabled = true; btn.textContent = '验证中…';
+  try{
+    const data = await api('/auth/invite', {method:'POST', body:{code}});
+    authAuthorized = true;
+    authEmail = data.email;
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('pledgeOverlay').classList.remove('hidden');
+  }catch(e){
+    errEl.textContent = e.message || '邀请码无效';
+  }finally{
+    btn.disabled = false; btn.textContent = '进入';
+  }
+}
+document.getElementById('inviteBtn').addEventListener('click', inviteLogin);
+document.getElementById('inviteCode').addEventListener('keydown', e => { if(e.key==='Enter') inviteLogin(); });
+
+/* ==================== 站长信箱弹窗（未登录访客） ==================== */
+function openMsgOverlay(source){
+  document.getElementById('msgOverlay').classList.remove('hidden');
+  document.getElementById('pubMsgArea').innerHTML = '';
+  // 记录来源（如：获取邀请码），随留言一起发送，便于站长识别
+  document.getElementById('msgOverlay').dataset.source = source || '';
+  setTimeout(() => document.getElementById('pubMsgContact').focus(), 100);
+}
+function closeMsgOverlay(){
+  document.getElementById('msgOverlay').classList.add('hidden');
+}
+document.getElementById('getInviteCodeLink').addEventListener('click', () => openMsgOverlay('获取邀请码'));
+document.getElementById('msgClose').addEventListener('click', closeMsgOverlay);
+document.getElementById('msgOverlay').addEventListener('click', e => {
+  if(e.target === document.getElementById('msgOverlay')) closeMsgOverlay();
+});
+
+async function submitPublicMessage(){
+  const contact = document.getElementById('pubMsgContact').value.trim();
+  const content = document.getElementById('pubMsgContent').value.trim();
+  const source = document.getElementById('msgOverlay').dataset.source || '';
+  const area = document.getElementById('pubMsgArea');
+  if(!contact){ area.innerHTML = '<span style="color:var(--danger)">请留下联系方式，以便站长回复你</span>'; return; }
+  if(!content){ area.innerHTML = '<span style="color:var(--danger)">请填写留言内容</span>'; return; }
+  const btn = document.getElementById('pubMsgSubmit');
+  btn.disabled = true; btn.textContent = '发送中…';
+  area.innerHTML = '';
+  try{
+    const data = await api('/public/message', {method:'POST', body:{content, contact, source}});
+    area.innerHTML = '<span style="color:var(--success)">' + (data.message || '发送成功') + '</span>';
+    document.getElementById('pubMsgContent').value = '';
+    document.getElementById('pubMsgContact').value = '';
+    setTimeout(closeMsgOverlay, 1800);
+  }catch(e){
+    area.innerHTML = '<span style="color:var(--danger)">' + (e.message || '发送失败，请稍后再试') + '</span>';
+  }finally{
+    btn.disabled = false; btn.textContent = '发送留言';
+  }
+}
+document.getElementById('pubMsgSubmit').addEventListener('click', submitPublicMessage);
+
+// Tab 切换
+document.querySelectorAll('.auth-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const mode = tab.dataset.mode;
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.auth-mode').forEach(m => m.classList.remove('active'));
+    document.getElementById('mode' + mode.charAt(0).toUpperCase() + mode.slice(1)).classList.add('active');
+  });
+});
+
+/* ==================== 站长信箱 ==================== */
+async function submitMessage(){
+  const content = document.getElementById('msgContent').value.trim();
+  const contact = document.getElementById('msgContact').value.trim();
+  const area = document.getElementById('msgArea');
+  if(!content){ area.innerHTML = '<span style="color:var(--danger)">请填写留言内容</span>'; return; }
+  const btn = document.getElementById('msgSubmit');
+  btn.disabled = true; btn.textContent = '发送中…';
+  area.innerHTML = '';
+  try{
+    const data = await api('/message', {method:'POST', body:{content, contact}});
+    area.innerHTML = '<span style="color:var(--success)">' + (data.message || '发送成功') + '</span>';
+    document.getElementById('msgContent').value = '';
+    document.getElementById('msgContact').value = '';
+  }catch(e){
+    area.innerHTML = '<span style="color:var(--danger)">' + e.message + '</span>';
+  }finally{
+    btn.disabled = false; btn.textContent = '发送留言';
+  }
+}
+document.getElementById('msgSubmit').addEventListener('click', submitMessage);
+
+/* ==================== 数据上报（浏览量、停留时长） ==================== */
+let trackCurrentPid = null;
+let trackEnterTime = 0;
+let trackHeartbeatTimer = null;
+
+function startTracking(){
+  // 每 60 秒发送一次心跳
+  if(trackHeartbeatTimer) clearInterval(trackHeartbeatTimer);
+  trackHeartbeatTimer = setInterval(() => {
+    api('/track/heartbeat', {method:'POST', body:{}}).catch(()=>{});
+  }, 60000);
+}
+
+function trackView(pid){
+  if(!authAuthorized || !pid) return;
+  trackCurrentPid = pid;
+  trackEnterTime = Date.now();
+  api('/track/view', {method:'POST', body:{pid}}).catch(()=>{});
+}
+
+function trackLeave(){
+  if(!authAuthorized || !trackCurrentPid) return;
+  const duration = Math.floor((Date.now() - trackEnterTime) / 1000);
+  if(duration > 1){
+    api('/track/duration', {method:'POST', body:{pid:trackCurrentPid, duration}}).catch(()=>{});
+  }
+  trackCurrentPid = null;
+}
+
+// 页面离开时上报
+window.addEventListener('beforeunload', trackLeave);
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden') trackLeave();
+});
+
+// 时间戳格式化
+function fmtTime(ts){
+  if(!ts) return '—';
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 相对时间
+function relTime(ts){
+  if(!ts) return '';
+  const diff = Date.now()/1000 - ts;
+  if(diff < 60) return '刚刚';
+  if(diff < 3600) return Math.floor(diff/60) + ' 分钟前';
+  if(diff < 86400) return Math.floor(diff/3600) + ' 小时前';
+  if(diff < 86400*30) return Math.floor(diff/86400) + ' 天前';
+  return fmtTime(ts).slice(0,10);
+}
+
+// HTML 转义
+function esc(s){
+  if(s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 关键词高亮
+function highlight(text, kw){
+  let safe = esc(text);
+  if(!kw) return safe;
+  const words = kw.trim().split(/\s+/).filter(Boolean).map(w => w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  if(!words.length) return safe;
+  const re = new RegExp('(' + words.join('|') + ')','gi');
+  return safe.replace(re, '<mark>$1</mark>');
+}
+
+// 数字格式化
+function fmtNum(n){
+  if(n == null || isNaN(n)) return '—';
+  n = Number(n);
+  if(n >= 1e8) return (n/1e8).toFixed(2) + '亿';
+  if(n >= 1e4) return (n/1e4).toFixed(1) + '万';
+  return n.toLocaleString('zh-CN');
+}
+
+/* 复制文本到剪贴板（兼容 HTTP 非安全上下文） */
+function copyText(text){
+  if(navigator.clipboard && window.isSecureContext){
+    return navigator.clipboard.writeText(text);
+  }
+  // 降级：临时 textarea + execCommand
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  ta.setAttribute('readonly', '');
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try{ ok = document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  return ok ? Promise.resolve() : Promise.reject(new Error('execCommand 失败'));
+}
+
+// Markdown 渲染（带 XSS 防护）
+function renderMarkdown(md){
+  if(!window.marked || !window.DOMPurify){ return '<pre>' + esc(md) + '</pre>'; }
+  marked.setOptions({gfm:true, breaks:false, headerIds:false, mangle:false});
+  const raw = marked.parse(md);
+  return DOMPurify.sanitize(raw, {USE_PROFILES:{html:true}});
+}
+
+/* ==================== Flash 提示 ==================== */
+const FLASH_ICONS = {
+  error:'<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 5.97L9.78 8l2 2.03a.75.75 0 11-1.06 1.06L8.72 9.06l-2.03 2.03a.75.75 0 11-1.06-1.06L7.66 8l-2.03-2.03a.75.75 0 011.06-1.06L8.72 6.94l2-2.03a.75.75 0 011.06 1.06z"/></svg>',
+  success:'<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.28 5.78L6.78 10.28l-2-2a.75.75 0 011.06-1.06L6.78 8.16l4.44-4.44a.75.75 0 011.06 1.06z"/></svg>',
+  info:'<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.75 4.75a.75.75 0 00-1.5 0v4.5a.75.75 0 001.5 0v-4.5zM8 12.5a1 1 0 100-2 1 1 0 000 2z"/></svg>'
+};
+function flash(type, message, duration = 4000){
+  const wrap = document.getElementById('flashWrap');
+  const el = document.createElement('div');
+  el.className = 'flash ' + type;
+  el.innerHTML = `${FLASH_ICONS[type]||FLASH_ICONS.info}<span>${esc(message)}</span><button class="flash-close" aria-label="关闭"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg></button>`;
+  wrap.appendChild(el);
+  const remove = () => { el.style.opacity='0'; el.style.transform='translateY(-8px)'; el.style.transition='.2s'; setTimeout(()=>el.remove(), 200); };
+  const timer = setTimeout(remove, duration);
+  el.querySelector('.flash-close').addEventListener('click', () => { clearTimeout(timer); remove(); });
+}
+
+/* ==================== Tab 导航切换 ==================== */
+let detailOrigin = null; // 记录进入详情页前的来源面板和滚动位置
+
+function switchPanel(name){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  if(name === 'overview'){
+    loadStats();
+    loadOverviewHot();
+  }
+  if(name === 'detail'){
+    // 直接通过 Tab 进入详情，清除返回来源、隐藏返回按钮
+    detailOrigin = null;
+    const backBtn = document.getElementById('detailBackBtn');
+    if(backBtn) backBtn.style.display = 'none';
+  }
+}
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.addEventListener('click', () => switchPanel(b.dataset.panel));
+});
+
+/* 从列表点击进入详情（记录来源，支持返回） */
+function openDetail(pid){
+  const activePanel = document.querySelector('.panel.active');
+  detailOrigin = {
+    panel: activePanel ? activePanel.id.replace('panel-', '') : 'overview',
+    scrollY: window.scrollY
+  };
+  const backBtn = document.getElementById('detailBackBtn');
+  if(backBtn) backBtn.style.display = 'flex';
+  document.getElementById('detailPid').value = pid;
+  // 切换面板（不走 switchPanel 以免被清空 origin）
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === 'detail'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-detail'));
+  loadDetail(pid);
+  window.scrollTo(0, 0);
+}
+
+/* 返回来源面板并恢复滚动位置 */
+function returnToOrigin(){
+  const origin = detailOrigin;
+  detailOrigin = null;
+  const backBtn = document.getElementById('detailBackBtn');
+  if(backBtn) backBtn.style.display = 'none';
+  if(origin){
+    const panel = origin.panel;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + panel));
+    // 仅恢复显示，不重新加载数据，以精确还原滚动位置
+    window.scrollTo(0, origin.scrollY);
+  }else{
+    switchPanel('overview');
+  }
+}
+document.getElementById('detailBackBtn').addEventListener('click', returnToOrigin);
+
+/* ==================== 概览：统计 ==================== */
+const STAT_CARDS = [
+  {key:'holes',    label:'帖子总数', grad:1, icon:'<path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v9.5A1.75 1.75 0 0114.25 14H8.061l-2.574 2.573A1.458 1.458 0 013 15.543V14H1.75A1.75 1.75 0 010 12.25v-9.5C0 1.784.784 1 1.75 1z"/>'},
+  {key:'week',     label:'近 7 天新帖', grad:3, icon:'<path d="M4.75 0a.75.75 0 01.75.75V2h5V.75a.75.75 0 011.5 0V2h1.25c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 16H2.75A1.75 1.75 0 011 14.25V3.75C1 2.784 1.784 2 2.75 2H4V.75A.75.75 0 014.75 0zM2.5 7.5v6.75c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25V7.5h-11z"/>'},
+  {key:'avg_like', label:'平均收藏', grad:4, icon:'<path d="M8 .25l2.12 4.3 4.74.69-3.43 3.34.81 4.72L8 11.06l-4.24 2.23.81-4.72L1.14 5.24l4.74-.69L8 .25z"/>'},
+  {key:'avg_reply',label:'平均评论', grad:5, icon:'<path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z"/>'}
+];
+async function loadStats(){
+  const grid = document.getElementById('statsGrid');
+  grid.innerHTML = STAT_CARDS.map(()=>`
+    <div class="stat-card">
+      <div class="stat-label">加载中…</div>
+      <div class="stat-value skeleton" style="width:60%;height:32px;margin-top:12px"></div>
+    </div>`).join('');
+  document.getElementById('statsNote').textContent = '数据跨度：—';
+  document.getElementById('distRow').style.display = 'none';
+  try{
+    const s = await api('/stats');
+    grid.innerHTML = STAT_CARDS.map(c => `
+      <div class="stat-card grad-${c.grad}">
+        <div class="stat-icon-wrap"><svg viewBox="0 0 16 16" fill="currentColor">${c.icon}</svg></div>
+        <div class="stat-value">${fmtNum(s[c.key])}</div>
+        <div class="stat-label">${c.label}</div>
+        <div class="stat-delta">${c.key==='avg_like'||c.key==='avg_reply' ? '全库均值' : (c.key==='week' ? '最近一周新增' : '累计入库')}</div>
+      </div>`).join('');
+    const minT = s.min_ts, maxT = s.max_ts;
+    if(minT && maxT){
+      document.getElementById('statsNote').textContent = `数据跨度：${fmtTime(minT).slice(0,10)} → ${fmtTime(maxT).slice(0,10)}`;
+    }else{
+      document.getElementById('statsNote').textContent = '数据跨度：暂无数据';
+    }
+    document.getElementById('lastRefreshTime').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    // 绘制话题分布环形图
+    drawDistribution(s.categories || [], s.total_7d || 0);
+  }catch(e){
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <svg viewBox="0 0 16 16" fill="currentColor" style="color:var(--danger)"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 5.97L9.78 8l2 2.03a.75.75 0 11-1.06 1.06L8.72 9.06l-2.03 2.03a.75.75 0 11-1.06-1.06L7.66 8l-2.03-2.03a.75.75 0 011.06-1.06L8.72 6.94l2-2.03a.75.75 0 011.06 1.06z"/></svg>
+      <div>统计加载失败</div><div style="font-size:12px;margin-top:4px">${esc(e.message)}</div></div>`;
+    flash('error', '统计加载失败：' + e.message);
+  }
+}
+
+/* ==================== 话题分布 · 环形图 ==================== */
+const CAT_COLORS = {
+  '学习': '#5B8DBF',
+  '情感': '#B87878',
+  '生活': '#6BA889',
+  '时事': '#8B7BB8',
+  '娱乐': '#B89A6B',
+  '求助': '#7BB0C4',
+  '其他': '#86868B',
+};
+
+function drawDistribution(categories, total){
+  const row = document.getElementById('distRow');
+  const donut = document.getElementById('distDonut');
+  const legend = document.getElementById('distLegend');
+  if(!categories.length || total === 0){
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = 'flex';
+  // 排序：按占比降序，"其他"强制最后
+  const sorted = [...categories].sort((a,b) => {
+    if(a.name === '其他') return 1;
+    if(b.name === '其他') return -1;
+    return b.percent - a.percent;
+  });
+  // 绘制 SVG 环形图（stroke-dasharray 法）
+  const r = 38, cx = 50, cy = 50;
+  const C = 2 * Math.PI * r;
+  let offset = 0;
+  let segments = '';
+  sorted.forEach(cat => {
+    if(cat.percent <= 0) return;
+    const len = C * cat.percent / 100;
+    const color = CAT_COLORS[cat.name] || '#86868B';
+    const op = cat.name === '其他' ? 0.45 : 0.92;
+    segments += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="11" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})" opacity="${op}"/>`;
+    offset += len;
+  });
+  donut.innerHTML = `<svg viewBox="0 0 100 100">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--divider-subtle)" stroke-width="11"/>
+    ${segments}
+  </svg>
+  <div class="dist-center">
+    <div class="dist-num">${fmtNum(total)}</div>
+    <div class="dist-num-label">近7天帖数</div>
+  </div>`;
+  // 图例
+  legend.innerHTML = sorted.map(cat => {
+    const color = CAT_COLORS[cat.name] || '#86868B';
+    const cls = cat.name === '其他' ? 'lg-item is-other' : 'lg-item';
+    return `<span class="${cls}">
+      <span class="lg-dot" style="background:${color}"></span>
+      <span class="lg-name">${esc(cat.name)}</span>
+      <span class="lg-pct">${cat.percent}%</span>
+    </span>`;
+  }).join('');
+}
+
+/* ==================== 概览：热门速览 ==================== */
+const BUBBLE_GRADIENTS = ['bubble-1','bubble-2','bubble-3','bubble-4','bubble-5','bubble-6','bubble-7','bubble-8'];
+const HEART_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25l2.12 4.3 4.74.69-3.43 3.34.81 4.72L8 11.06l-4.24 2.23.81-4.72L1.14 5.24l4.74-.69L8 .25z"/></svg>';
+const CMT_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z"/></svg>';
+
+async function loadOverviewHot(){
+  const grid = document.getElementById('bubbleGrid');
+  try{
+    const data = await api('/hot?days=7&min_like=10&limit=100');
+    const posts = data.posts || [];
+    if(!posts.length){
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary);font-weight:300">暂无热帖数据</div>';
+      return;
+    }
+    grid.innerHTML = posts.map((p, i) => {
+      const grad = BUBBLE_GRADIENTS[i % BUBBLE_GRADIENTS.length];
+      const text = (p.text || '').slice(0, 200);
+      return `<div class="bubble-card" style="background:var(--${grad})" data-pid="${esc(p.pid)}">
+        <div class="bc-text">${esc(text)}</div>
+        <div class="bc-footer">
+          <span class="bc-pid">#${esc(p.pid)}</span>
+          ${p.deleted ? '<span class="bc-deleted">已删除</span>' : ''}
+          <span class="bc-meta hot">${HEART_ICON}${fmtNum(p.likenum)}</span>
+          <span class="bc-meta cmt">${CMT_ICON}${fmtNum(p.reply)}</span>
+          <span class="bc-time">${relTime(p.timestamp)}</span>
+        </div>
+      </div>`;
+    }).join('');
+    // 点击跳转详情
+    grid.querySelectorAll('.bubble-card[data-pid]').forEach(card => {
+      card.addEventListener('click', () => {
+        openDetail(card.dataset.pid);
+      });
+    });
+  }catch(e){
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--danger);font-weight:300">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* ==================== 概览：自动刷新 ==================== */
+let overviewRefreshTimer = null;
+function startOverviewAutoRefresh(){
+  if(overviewRefreshTimer) clearInterval(overviewRefreshTimer);
+  overviewRefreshTimer = setInterval(() => {
+    if(document.getElementById('panel-overview').classList.contains('active')){
+      loadStats();
+      loadOverviewHot();
+    }
+  }, 60000);
+}
+
+/* 手动刷新按钮 */
+document.getElementById('manualRefreshBtn').addEventListener('click', async function(){
+  const btn = this;
+  btn.style.transform = 'rotate(360deg)';
+  btn.style.color = 'var(--accent-blue)';
+  await Promise.all([loadStats(), loadOverviewHot()]);
+  setTimeout(() => { btn.style.transform = ''; btn.style.color = ''; }, 400);
+  flash('success', '数据已刷新');
+});
+
+/* ==================== 帖子列表渲染（热帖/搜索共用） ==================== */
+function renderPostList(posts, container, keyword){
+  if(!posts || !posts.length){
+    container.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0114.25 13H8.06l-2.573 2.573A1.458 1.458 0 013 14.543V13H1.75A1.75 1.75 0 010 11.25v-9.5z"/></svg>
+      <div>没有匹配的帖子</div></div>`;
+    return;
+  }
+  container.innerHTML = `<div class="result-count">共 <b>${posts.length}</b> 条结果</div>
+    <div class="post-list">${posts.map(p => postItemHTML(p, keyword)).join('')}</div>`;
+  // 仅对实际被截断的帖子显示「展开全文」按钮
+  container.querySelectorAll('.post-text').forEach(body => {
+    if(body.scrollHeight <= body.clientHeight + 2){
+      const btn = body.parentElement.querySelector('.post-toggle');
+      if(btn) btn.style.display = 'none';
+    }
+  });
+  container.querySelectorAll('.post-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = btn.closest('.post-item');
+      const body = item.querySelector('.post-text');
+      body.classList.toggle('expanded');
+      btn.classList.toggle('expanded');
+      const expanded = body.classList.contains('expanded');
+      btn.querySelector('.toggle-text').textContent = expanded ? '收起' : '展开全文';
+    });
+  });
+  container.querySelectorAll('.post-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const pidLink = item.querySelector('.pid-link[data-pid]');
+      if(pidLink){
+        openDetail(pidLink.dataset.pid);
+      }
+    });
+  });
+}
+
+function postItemHTML(p, keyword){
+  const text = p.text || '';
+  const bodyHTML = keyword ? highlight(text, keyword) : esc(text);
+  const t = p.type || 'text';
+  // 解析图片：image_size 为 [w1,h1,w2,h2,...]，每两个元素代表一张图
+  let imagesHTML = '';
+  if(t === 'image' && p.image_size){
+    let imgSizes;
+    try{ imgSizes = typeof p.image_size === 'string' ? JSON.parse(p.image_size) : p.image_size; }catch(e){ imgSizes = []; }
+    if(Array.isArray(imgSizes) && imgSizes.length >= 2){
+      const count = Math.floor(imgSizes.length / 2);
+      imagesHTML = '<div class="post-images">' + Array.from({length: count}, (_, i) =>
+        `<img src="${API_BASE}/image?pid=${esc(p.pid)}&idx=${i}" loading="lazy" alt="图片${i+1}" onclick="event.stopPropagation();window.open(this.src,'_blank')">`
+      ).join('') + '</div>';
+    }
+  }
+  return `<div class="post-item">
+    <div class="post-item-main">
+      <div class="post-head-row">
+        <span class="pid-link" data-pid="${esc(p.pid)}" title="点击查看详情">#${esc(p.pid)}</span>
+        <span class="type-tag ${t==='image'?'image':'text'}">${t==='image'?'图片':'文本'}</span>
+        ${p.deleted ? '<span class="deleted-badge" title="该帖子已被树洞平台管理员删除">已删除</span>' : ''}
+      </div>
+      <div class="post-text">${bodyHTML}</div>
+      ${imagesHTML}
+      <button class="post-toggle"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M12.78 5.22a.749.749 0 010 1.06l-4.25 4.25a.749.749 0 01-1.06 0L3.22 6.28a.749.749 0 11 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 011.06 0z"/></svg><span class="toggle-text">展开全文</span></button>
+    </div>
+    <div class="post-item-aside">
+      <span class="meta hot" title="收藏数"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25l2.12 4.3 4.74.69-3.43 3.34.81 4.72L8 11.06l-4.24 2.23.81-4.72L1.14 5.24l4.74-.69L8 .25z"/></svg>${fmtNum(p.likenum)}</span>
+      <span class="meta cmt" title="评论数"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z"/></svg>${fmtNum(p.reply)}</span>
+      <span class="meta" title="时间">${relTime(p.timestamp)}</span>
+    </div>
+  </div>`;
+}
+
+function skeletonList(n=4){
+  let html = '<div class="post-list">';
+  for(let i=0;i<n;i++){
+    html += `<div class="sk-item">
+      <div class="skeleton sk-line short"></div>
+      <div class="skeleton sk-line mid"></div>
+      <div class="skeleton sk-line"></div>
+      <div class="skeleton sk-line short"></div>
+    </div>`;
+  }
+  return html + '</div>';
+}
+
+/* ==================== 热帖（含关键词搜索） ==================== */
+let hotMode = 'hot'; // 'hot' = 默认筛选, 'keyword' = 关键词匹配
+
+document.getElementById('hotModeSwitch').querySelectorAll('button').forEach(b => {
+  b.addEventListener('click', () => {
+    hotMode = b.dataset.mode;
+    document.getElementById('hotModeSwitch').querySelectorAll('button').forEach(x => x.classList.toggle('active', x===b));
+    document.getElementById('hotKeywordField').style.display = hotMode==='keyword' ? 'flex' : 'none';
+  });
+});
+
+async function loadHot(){
+  const days = parseInt(document.getElementById('hotDays').value, 10);
+  const limit = parseInt(document.getElementById('hotLimit').value, 10);
+  if(!days || days < 1 || days > 90){ flash('error', '天数需为 1-90 之间的整数'); return; }
+  if(!limit || limit < 1 || limit > 100){ flash('error', '数量需为 1-100 之间的整数'); return; }
+
+  const box = document.getElementById('hotList');
+  box.innerHTML = skeletonList();
+
+  try{
+    let data, keyword = null;
+    if(hotMode === 'keyword'){
+      keyword = document.getElementById('hotKeyword').value.trim();
+      if(!keyword){ flash('error', '请输入关键词'); return; }
+      if(keyword.length > 80){ flash('error', '关键词最多 80 个字符'); return; }
+      data = await api(`/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}&days=${days}`);
+      renderPostList(data.posts, box, keyword);
+      flash('success', `搜索完成：共 ${data.posts?data.posts.length:0} 条模糊匹配 "${keyword}" · 最近 ${days} 天`);
+    }else{
+      data = await api(`/hot?days=${days}&limit=${limit}`);
+      renderPostList(data.posts, box, null);
+      flash('success', `已加载热帖：共 ${data.posts?data.posts.length:0} 条 · 最近 ${days} 天`);
+    }
+  }catch(e){
+    box.innerHTML = '';
+    flash('error', '加载失败：' + e.message);
+  }
+}
+document.getElementById('loadHot').addEventListener('click', loadHot);
+document.getElementById('hotKeyword').addEventListener('keydown', e => { if(e.key==='Enter') loadHot(); });
+
+/* ==================== AI 报告：加载 Providers ==================== */
+async function loadProviders(){
+  const list = document.getElementById('providerList');
+  try{
+    const data = await api('/providers');
+    providersData = data.providers || [];
+    renderProviders();
+  }catch(e){
+    list.innerHTML = `<div style="padding:16px 0;color:var(--danger);font-size:13px;font-family:var(--font-sans);font-weight:300">模型列表加载失败：${esc(e.message)}</div>`;
+    flash('error', '模型列表加载失败：' + e.message);
+  }
+}
+
+function renderProviders(){
+  const list = document.getElementById('providerList');
+  if(!providersData.length){
+    list.innerHTML = '<div style="padding:16px 0;color:var(--fg-secondary);font-size:13px;font-family:var(--font-sans);font-weight:300">暂无可用模型</div>';
+    return;
+  }
+  // MiniMax 默认选中
+  if(!currentProvider){
+    const pub = providersData.find(p => p.public);
+    if(pub){ currentProvider = pub.name; currentProviderConfig = pub; }
+  }
+  list.innerHTML = providersData.map(p => {
+    const selected = p.name === currentProvider ? 'selected' : '';
+    const modelOptions = (p.models || [p.model]).map(m =>
+      `<option value="${esc(m)}">${esc(m)}</option>`
+    ).join('');
+    // public provider（MiniMax）：服务器提供 Key，无需配置
+    if(p.public){
+      return `<div class="provider-item configured ${selected}" data-name="${esc(p.name)}">
+        <div class="provider-head">
+          <span class="pcheck"></span>
+          <span class="pn">${esc(p.label || p.name)}</span>
+          <span class="pbadge ok">可用</span>
+        </div>
+        <div class="provider-custom">
+          <div style="font-size:12px;color:var(--fg-secondary);line-height:1.7;font-family:var(--font-sans);font-weight:400;padding:4px 0">
+            此模型由站长提供，可直接使用，无需填写 API Key。
+          </div>
+          <div class="field">
+            <label>模型（可从列表选择或手动输入）</label>
+            <div style="display:flex;gap:6px">
+              <select class="input provider-model-select" style="flex:1;min-width:0" onchange="this.nextElementSibling.value=this.value;this.nextElementSibling.dispatchEvent(new Event('input'))">
+                <option value="">— 选择预设模型 —</option>
+                ${modelOptions}
+              </select>
+              <input type="text" class="input provider-model" value="${esc(p.model || '')}" placeholder="或手动输入模型名" style="flex:1;min-width:0">
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+    // 其他 provider：需自行配置，支持直连模式
+    return `<div class="provider-item custom ${selected}" data-name="${esc(p.name)}">
+      <div class="provider-head">
+        <span class="pcheck"></span>
+        <span class="pn">${esc(p.label || p.name)}</span>
+        <span class="pbadge no">需配置</span>
+      </div>
+      <div class="provider-custom">
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" class="provider-direct" style="margin:0">
+            <span>直连模式（API Key 仅在浏览器中使用，不经过服务器）</span>
+          </label>
+          <div style="font-size:11px;color:var(--fg-tertiary);line-height:1.6;margin-top:4px;font-family:var(--font-sans)">
+            勾选后，你的 API Key 不会发送到本站服务器，浏览器直接调用对应 AI 服务。
+          </div>
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input type="password" class="input provider-apikey" placeholder="填入你的 API Key" style="width:100%">
+        </div>
+        <div class="field">
+          <label>模型（可从列表选择或手动输入）</label>
+          <div style="display:flex;gap:6px">
+            <select class="input provider-model-select" style="flex:1;min-width:0" onchange="this.nextElementSibling.value=this.value;this.nextElementSibling.dispatchEvent(new Event('input'))">
+              <option value="">— 选择预设模型 —</option>
+              ${modelOptions}
+            </select>
+            <input type="text" class="input provider-model" value="${esc(p.model || '')}" placeholder="或手动输入模型名" style="flex:1;min-width:0">
+          </div>
+        </div>
+        <div class="field">
+          <label>API URL</label>
+          <input type="text" class="input provider-url" value="${esc(p.url || '')}" style="width:100%">
+        </div>
+        <div class="field">
+          <label>格式</label>
+          <select class="input provider-fmt" style="width:100%">
+            <option value="openai"${p.fmt==='openai'?' selected':''}>openai</option>
+            <option value="anthropic"${p.fmt==='anthropic'?' selected':''}>anthropic</option>
+          </select>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.provider-item').forEach(item => {
+    const head = item.querySelector('.provider-head');
+    head.addEventListener('click', (e) => {
+      const name = item.dataset.name;
+      const provider = providersData.find(p => p.name === name);
+      if(!provider) return;
+      const custom = item.querySelector('.provider-custom');
+      if(custom){
+        const isShown = custom.classList.contains('show');
+        list.querySelectorAll('.provider-custom.show').forEach(c => c.classList.remove('show'));
+        if(!isShown){
+          custom.classList.add('show');
+        }
+      }
+      // public provider 点击即选中
+      const provider2 = providersData.find(p => p.name === name);
+      if(provider2 && provider2.public){
+        currentProvider = name;
+        currentProviderConfig = provider2;
+        updateProviderSelection();
+        return;
+      }
+      // 非 public：检查是否填了 key
+      const apikey = item.querySelector('.provider-apikey');
+      if(apikey && apikey.value.trim()){
+        currentProvider = name;
+        currentProviderConfig = provider;
+        updateProviderSelection();
+      }
+    });
+  });
+
+  list.querySelectorAll('.provider-custom').forEach(custom => {
+    const item = custom.closest('.provider-item');
+    custom.querySelectorAll('input:not([type="checkbox"]), select').forEach(input => {
+      input.addEventListener('input', () => {
+        const apikey = item.querySelector('.provider-apikey');
+        if(apikey && apikey.value.trim()){
+          const name = item.dataset.name;
+          const provider = providersData.find(p => p.name === name);
+          if(provider){
+            currentProvider = name;
+            currentProviderConfig = provider;
+            updateProviderSelection();
+          }
+        }
+      });
+      input.addEventListener('click', (e) => e.stopPropagation());
+    });
+    // checkbox 阻止冒泡
+    const cb = custom.querySelector('.provider-direct');
+    if(cb) cb.addEventListener('click', (e) => e.stopPropagation());
+  });
+}
+
+function updateProviderSelection(){
+  document.querySelectorAll('.provider-item').forEach(item => {
+    item.classList.toggle('selected', item.dataset.name === currentProvider);
+  });
+}
+
+/* ==================== AI 报告：模式切换 ==================== */
+document.getElementById('modeSwitch').querySelectorAll('button').forEach(b => {
+  b.addEventListener('click', () => {
+    currentMode = b.dataset.mode;
+    document.getElementById('modeSwitch').querySelectorAll('button').forEach(x => x.classList.toggle('active', x===b));
+    document.getElementById('keywordField').style.display = currentMode==='keyword' ? 'block' : 'none';
+  });
+});
+
+/* ==================== AI 报告：生成报告 ==================== */
+let reportTimer = null;
+let reportStart = 0;
+const STATUS_MSGS = [
+  '正在从数据库采样高热度帖子…',
+  '构建分析 Prompt，注入上下文…',
+  '调用大模型生成报告，请耐心等待…',
+  '正在润色报告，链接化洞号引用…',
+  '即将完成，整理被引用帖子原文附录…'
+];
+function startProgress(card){
+  reportStart = Date.now();
+  let idx = 0;
+  card.innerHTML = `<div class="report-loading">
+    <span class="spinner spinner-lg"></span>
+    <div class="lt">正在生成报告…</div>
+    <div class="ls" id="rpStatus">${STATUS_MSGS[0]}</div>
+    <div class="progress-track"><div class="progress-bar"></div></div>
+    <div class="elapsed" id="rpElapsed">00:00</div>
+  </div>`;
+  const statusEl = document.getElementById('rpStatus');
+  const elapsedEl = document.getElementById('rpElapsed');
+  reportTimer = setInterval(() => {
+    const sec = Math.floor((Date.now() - reportStart)/1000);
+    const mm = String(Math.floor(sec/60)).padStart(2,'0');
+    const ss = String(sec%60).padStart(2,'0');
+    if(elapsedEl) elapsedEl.textContent = `${mm}:${ss}`;
+    const next = Math.min(STATUS_MSGS.length-1, Math.floor(sec/18));
+    if(next !== idx && statusEl){ idx = next; statusEl.textContent = STATUS_MSGS[idx]; }
+  }, 1000);
+}
+function stopProgress(){
+  if(reportTimer){ clearInterval(reportTimer); reportTimer = null; }
+}
+
+async function genReport(){
+  const days = parseInt(document.getElementById('reportDays').value, 10);
+  if(!days || days < 1 || days > 90){ flash('error', '天数需为 1-90 之间的整数'); return; }
+  let keyword = null;
+  if(currentMode === 'keyword'){
+    keyword = document.getElementById('reportKeyword').value.trim();
+    if(!keyword){ flash('error', '关键词专题模式需要至少一个关键词'); return; }
+    if(keyword.length > 80){ flash('error', '关键词最多 80 个字符'); return; }
+  }
+  if(!currentProvider){ flash('error', '请选择一个 LLM 服务'); return; }
+
+  const selectedItem = document.querySelector('.provider-item.selected');
+  if(!selectedItem){ flash('error', '请选择一个 LLM 服务'); return; }
+  const providerInfo = providersData.find(p => p.name === currentProvider);
+
+  const card = document.getElementById('reportCard');
+  const btn = document.getElementById('genReport');
+  btn.disabled = true;
+  startProgress(card);
+
+  try{
+    let md;
+    if(providerInfo && providerInfo.public){
+      // 情况1：public provider（MiniMax），服务器代理调用
+      const body = {days, provider: currentProvider};
+      if(keyword) body.keyword = keyword;
+      // public provider 可选自定义模型
+      const modelEl = selectedItem.querySelector('.provider-model');
+      if(modelEl && modelEl.value.trim()){
+        body.customConfig = {model: modelEl.value.trim(), url: providerInfo.url, fmt: providerInfo.fmt, apiKey: '__public__'};
+      }
+      flash('info', `开始生成报告 · 服务：${currentProvider}（站长提供） · 模式：${currentMode==='week'?'全周分析':'关键词专题'}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+      const data = await api('/report', {method:'POST', body, signal: controller.signal});
+      clearTimeout(timeoutId);
+      md = data.content || '（报告内容为空）';
+
+    }else{
+      // 情况2/3：非 public provider
+      const apikey = selectedItem.querySelector('.provider-apikey');
+      const modelEl = selectedItem.querySelector('.provider-model');
+      const urlEl = selectedItem.querySelector('.provider-url');
+      const fmtEl = selectedItem.querySelector('.provider-fmt');
+      const directCb = selectedItem.querySelector('.provider-direct');
+
+      if(!apikey || !modelEl || !urlEl){ flash('error', '配置读取失败'); return; }
+      const ak = apikey.value.trim();
+      const model = modelEl.value.trim();
+      const url = urlEl.value.trim();
+      const fmt = fmtEl ? fmtEl.value : 'openai';
+      const isDirect = directCb && directCb.checked;
+
+      if(!ak){ flash('error', '请填入 API Key'); return; }
+      if(!model){ flash('error', '请填入模型名称'); return; }
+      if(!url){ flash('error', '请填入 API URL'); return; }
+      if(!/^https:\/\//i.test(url)){ flash('error', 'API URL 必须以 https:// 开头'); return; }
+
+      if(isDirect){
+        // 直连模式：先从服务器获取 prompt，再浏览器直接调用 LLM
+        flash('info', `开始生成报告 · 直连 ${currentProvider}（Key 不经过服务器） · 模式：${currentMode==='week'?'全周分析':'关键词专题'}`);
+        const prepBody = {days};
+        if(keyword) prepBody.keyword = keyword;
+        const prep = await api('/report/prepare', {method:'POST', body: prepBody});
+        // 浏览器直接调用 LLM API
+        md = await callLlmDirect(url, ak, model, fmt, prep.system, prep.user);
+        // 调用后处理接口（链接化 + 附录）
+        md = await api('/report/enrich', {method:'POST', body: {content: md}});
+        md = md.content;
+      }else{
+        // 服务器代理模式：customConfig 传给服务器
+        flash('info', `开始生成报告 · 服务：${currentProvider}（服务器代理） · 模式：${currentMode==='week'?'全周分析':'关键词专题'}`);
+        const body = {days, provider: currentProvider, customConfig: {apiKey: ak, model, url, fmt}};
+        if(keyword) body.keyword = keyword;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000);
+        const data = await api('/report', {method:'POST', body, signal: controller.signal});
+        clearTimeout(timeoutId);
+        md = data.content || '（报告内容为空）';
+      }
+    }
+
+    stopProgress();
+    card.innerHTML = `<div class="report-toolbar">
+        <div class="rt-info"><span class="dot">●</span> 生成完成 · 耗时 ${Math.floor((Date.now()-reportStart)/1000)}s · ${currentMode==='week'?'全周分析':'专题：'+esc(keyword)}</div>
+        <button class="btn" id="copyMd" title="复制 Markdown 源码">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zM6.75 1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>
+          复制 Markdown
+        </button>
+      </div>
+      <div class="markdown" id="reportMd">${renderMarkdown(md)}</div>`;
+    document.getElementById('copyMd').addEventListener('click', () => {
+      navigator.clipboard.writeText(md).then(
+        () => flash('success', 'Markdown 源码已复制到剪贴板'),
+        () => flash('error', '复制失败，请手动选择文本复制')
+      );
+    });
+    card.querySelectorAll('.markdown a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+    flash('success', `报告生成完成 · ${currentProvider}`);
+  }catch(e){
+    stopProgress();
+    card.innerHTML = `<div class="report-placeholder">
+      <svg viewBox="0 0 16 16" fill="currentColor" style="color:var(--danger)"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 5.97L9.78 8l2 2.03a.75.75 0 11-1.06 1.06L8.72 9.06l-2.03 2.03a.75.75 0 11-1.06-1.06L7.66 8l-2.03-2.03a.75.75 0 011.06-1.06L8.72 6.94l2-2.03a.75.75 0 011.06 1.06z"/></svg>
+      <h3>生成失败</h3><p>${esc(e.message)}</p></div>`;
+    flash('error', '报告生成失败：' + e.message);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/**
+ * 前端直连调用 LLM API — API Key 只在浏览器中使用，不经过服务器
+ */
+async function callLlmDirect(url, apiKey, model, fmt, system, user){
+  const isAnthropic = fmt === 'anthropic';
+  let headers, body;
+  if(isAnthropic){
+    headers = {'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+    body = JSON.stringify({model, max_tokens:4096, system, messages:[{role:'user',content:user}]});
+  }else{
+    headers = {'Content-Type':'application/json','Authorization':'Bearer '+apiKey};
+    body = JSON.stringify({model, temperature:0.7, stream:false, messages:[{role:'system',content:system},{role:'user',content:user}]});
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 280000);
+  try{
+    const resp = await fetch(url, {method:'POST', headers, body, signal: controller.signal});
+    clearTimeout(timeoutId);
+    if(!resp.ok){
+      const text = await resp.text();
+      throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0,300)}`);
+    }
+    const data = await resp.json();
+    if(isAnthropic) return data.content[0].text;
+    return data.choices[0].message.content;
+  }catch(e){
+    clearTimeout(timeoutId);
+    if(e.name === 'AbortError') throw new Error('LLM 请求超时（直连模式）');
+    if(e instanceof TypeError && /fetch/i.test(e.message)) throw new Error('直连失败：该 AI 服务可能不支持浏览器直接调用（CORS 限制）。请取消直连模式改用服务器代理，或更换支持浏览器跨域的 API。');
+    throw e;
+  }
+}
+document.getElementById('genReport').addEventListener('click', genReport);
+
+/* ==================== 帖子详情 ==================== */
+async function loadDetail(pidOverride){
+  let pid = pidOverride || document.getElementById('detailPid').value.trim();
+  if(!/^\d+$/.test(pid)){ flash('error', 'PID 无效：请输入纯数字的帖子编号'); return; }
+  pid = parseInt(pid, 10);
+  if(pid < 1){ flash('error', 'PID 需为正整数'); return; }
+  const area = document.getElementById('detailArea');
+  area.innerHTML = `<div class="card" style="padding:0">${skeletonList(2)}</div>`;
+
+  // 上报浏览（先离开旧帖，再进入新帖）
+  trackLeave();
+  trackView(pid);
+
+  try{
+    const data = await api(`/show?pid=${pid}`);
+    renderDetail(data, area);
+  }catch(e){
+    area.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 16 16" fill="currentColor" style="color:var(--danger)"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 5.97L9.78 8l2 2.03a.75.75 0 11-1.06 1.06L8.72 9.06l-2.03 2.03a.75.75 0 11-1.06-1.06L7.66 8l-2.03-2.03a.75.75 0 011.06-1.06L8.72 6.94l2-2.03a.75.75 0 011.06 1.06z"/></svg>
+      <div>加载失败</div><div style="font-size:12px;margin-top:4px">${esc(e.message)}</div></div>`;
+    flash('error', '详情加载失败：' + e.message);
+  }
+}
+document.getElementById('loadDetail').addEventListener('click', () => loadDetail());
+document.getElementById('detailPid').addEventListener('keydown', e => { if(e.key==='Enter') loadDetail(); });
+
+function renderDetail(data, area){
+  const post = data.post;
+  if(!post){
+    area.innerHTML = `<div class="empty-state"><div>未找到该帖子</div></div>`;
+    return;
+  }
+  const comments = data.comments || [];
+  function avatar(name){
+    const n = (name||'A').trim();
+    return (n[0]||'A').toUpperCase();
+  }
+  // 按 name 哈希分配头像配色（0-7）
+  function avatarClass(name){
+    const n = (name||'A').trim();
+    let h = 0;
+    for(let i=0;i<n.length;i++) h = (h*31 + n.charCodeAt(i)) & 0x7fffffff;
+    return 'c' + (h % 8);
+  }
+  // 解析 quote 字段：可能是 JSON 字符串（含完整被引用评论对象），提取其中的 text
+  function parseQuote(q){
+    if(!q) return '';
+    try{
+      const obj = typeof q === 'string' ? JSON.parse(q) : q;
+      if(obj && typeof obj === 'object' && obj.text) return obj.text;
+    }catch(e){}
+    return String(q); // 非 JSON，直接返回原文
+  }
+  // 判断是否为洞主（name_tag 为 Alice 且第一条评论，或 name_tag === 'Alice'）
+  const opName = 'Alice';
+  const commentsHTML = comments.length ? comments.map(c => {
+    const quoteText = parseQuote(c.quote);
+    const isOp = (c.name||'').trim() === opName;
+    const aClass = isOp ? 'op' : avatarClass(c.name);
+    return `
+    <div class="comment ${c.comment_id?'has-parent':''}">
+      <div class="avatar ${aClass}">${esc(avatar(c.name))}</div>
+      <div class="comment-body">
+        <div class="comment-head">
+          <span class="cname">${esc(c.name||'匿名')}${isOp?' <span style="font-size:10px;color:var(--fg-tertiary);font-weight:400">· 洞主</span>':''}</span>
+          <span class="ctime">${relTime(c.timestamp)}</span>
+          ${c.comment_id?`<span class="cref">↩ #${esc(c.comment_id)}</span>`:''}
+        </div>
+        ${quoteText?`<div class="cquote">${esc(quoteText)}</div>`:''}
+        <div class="ctext">${esc(c.text||'')}</div>
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty-state" style="padding:32px"><div>暂无评论</div></div>`;
+
+  const t = post.type || 'text';
+  // 解析帖子图片
+  let imagesHTML = '';
+  if(t === 'image' && post.image_size){
+    let imgSizes;
+    try{ imgSizes = typeof post.image_size === 'string' ? JSON.parse(post.image_size) : post.image_size; }catch(e){ imgSizes = []; }
+    if(Array.isArray(imgSizes) && imgSizes.length >= 2){
+      const count = Math.floor(imgSizes.length / 2);
+      imagesHTML = '<div class="post-images">' + Array.from({length: count}, (_, i) =>
+        `<img src="${API_BASE}/image?pid=${esc(post.pid)}&idx=${i}" loading="lazy" alt="图片${i+1}" onclick="window.open(this.src,'_blank')">`
+      ).join('') + '</div>';
+    }
+  }
+  area.innerHTML = `
+    <div class="card detail-post">
+      <div class="detail-title">正文</div>
+      <div class="post-head-row">
+        <span class="pid-link detail-pid-copy" data-pid="${esc(post.pid)}" title="点击复制洞号">
+          #${esc(post.pid)}
+          <svg class="copy-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg>
+        </span>
+        <span class="type-tag ${t==='image'?'image':'text'}">${t==='image'?'图片':'文本'}</span>
+        ${post.deleted ? '<span class="deleted-badge" title="该帖子已被树洞平台管理员删除">已删除</span>' : ''}
+      </div>
+      <div class="detail-text">${esc(post.text||'（空）')}</div>
+      ${imagesHTML}
+      <div class="detail-meta-row">
+        <span>发布：<b>${fmtTime(post.timestamp)}</b></span>
+        <span>收藏：<b>${fmtNum(post.likenum)}</b></span>
+        <span>评论：<b>${fmtNum(post.reply)}</b></span>
+        ${post.category?`<span class="category-tag" style="color:${CAT_COLORS[post.category]||'#86868B'}">分类：<b>${esc(post.category)}</b></span>`:''}
+        <a href="https://treehole.pku.edu.cn/web/#/hole/${esc(post.pid)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto">在树洞打开 ↗</a>
+      </div>
+    </div>
+    <div class="comments-section">
+      <div class="comments-head">
+        <h3>评论</h3>
+        <span class="count">${comments.length} 条</span>
+      </div>
+      <div class="comment-list">${commentsHTML}</div>
+    </div>`;
+  // 点击洞号复制
+  const pidCopyEl = area.querySelector('.detail-pid-copy');
+  if(pidCopyEl){
+    pidCopyEl.addEventListener('click', () => {
+      const pid = pidCopyEl.dataset.pid;
+      copyText(pid).then(() => {
+        pidCopyEl.classList.add('copied');
+        flash('success', `已复制洞号 #${pid}`);
+        setTimeout(() => pidCopyEl.classList.remove('copied'), 1500);
+      }).catch(() => flash('error', '复制失败，请手动选中复制'));
+    });
+  }
+}
+
+/* ==================== Token 过期检测 ==================== */
+const LOGO_BACK_SVG = `
+  <!-- 袋鼠背面：头朝里，后背和尾巴朝外 -->
+  <!-- 身体上半身（后背视角） -->
+  <ellipse cx="24" cy="32" rx="13" ry="14" fill="#B89898"/>
+  <!-- 后脑勺（只露出一小部分） -->
+  <ellipse cx="24" cy="14" rx="8" ry="7" fill="#C8A9A9"/>
+  <!-- 耳朵背面（从后面看，稍偏外） -->
+  <ellipse cx="17" cy="8" rx="3.5" ry="5" fill="#A88888" transform="rotate(-15 17 8)"/>
+  <ellipse cx="31" cy="8" rx="3.5" ry="5" fill="#A88888" transform="rotate(15 31 8)"/>
+  <!-- 脊柱线条 -->
+  <path d="M24 18 Q24 30 24 44" stroke="#A88888" stroke-width="1" fill="none" opacity="0.5"/>
+  <!-- 尾巴（从背后看，向下垂） -->
+  <path d="M35 38 Q42 42 40 48" stroke="#B89898" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- 小爪子（从背后看，露出一部分） -->
+  <ellipse cx="15" cy="38" rx="2.5" ry="3.5" fill="#A88888"/>
+  <ellipse cx="33" cy="38" rx="2.5" ry="3.5" fill="#A88888"/>
+`;
+
+async function checkTokenStatus(){
+  try{
+    const data = await api('/status');
+    if(data.token_warning){
+      const logo = document.getElementById('logoKangaroo');
+      if(logo){
+        logo.style.opacity = '0';
+        setTimeout(() => {
+          logo.innerHTML = LOGO_BACK_SVG;
+          logo.style.opacity = '0.9';
+        }, 400);
+      }
+      const days = data.token_days_left;
+      if(days !== null && days <= 7){
+        console.warn(`[token] 树洞 Token 剩余 ${days} 天，即将过期，袋鼠已转身提醒`);
+      }
+    }
+  }catch(e){ /* 静默失败 */ }
+}
+
+/* ==================== 初始化 ==================== */
+// 先检查访问权限，授权后才加载数据
+(async function init(){
+  const ok = await checkAuth();
+  if(ok){
+    loadStats();
+    loadOverviewHot();
+    startOverviewAutoRefresh();
+    loadProviders();
+    checkTokenStatus();
+  }
+})();
+</script>
+</body>
+</html>

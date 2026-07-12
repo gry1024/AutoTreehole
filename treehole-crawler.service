@@ -1,0 +1,18 @@
+[Unit]
+Description=AutoTreehole Crawler (7x24 incremental crawler)
+After=network.target
+
+[Service]
+Type=simple
+# 请改成你服务器上的实际用户与路径
+User=ubuntu
+WorkingDirectory=/path/to/treehole
+ExecStart=/path/to/treehole/venv/bin/python /path/to/treehole/crawler.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/treehole/crawler.log
+StandardError=append:/var/log/treehole/crawler.log
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

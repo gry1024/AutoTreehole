@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoTreehole · 数据后台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F5F7;--bg-elevated:#FFFFFF;--fg:#1D1D1F;--fg-secondary:#6E6E73;
+  --fg-tertiary:#86868B;--divider:#D2D2D7;--divider-subtle:#E8E8ED;
+  --accent-blue:#0071E3;--danger:#FF3B30;--success:#34C759;
+  --radius:6px;--radius-sm:4px;
+  --font-serif:"Noto Serif SC","Source Han Serif SC",serif;
+  --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
+  -webkit-font-smoothing:antialiased;line-height:1.7;font-size:14px;letter-spacing:0.01em;}
+
+/* 登录页 */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.login-card{max-width:340px;width:100%;text-align:center}
+.login-card h1{font-size:22px;font-weight:600;margin-bottom:8px;letter-spacing:-0.02em}
+.login-card p{font-size:13px;color:var(--fg-secondary);margin-bottom:24px}
+.login-input{width:100%;background:var(--bg-elevated);border:1px solid var(--divider);
+  border-radius:var(--radius-sm);padding:10px 14px;font-size:14px;outline:none;
+  font-family:var(--font-sans);margin-bottom:12px}
+.login-input:focus{border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(0,113,227,0.12)}
+.login-btn{width:100%;padding:11px;border-radius:var(--radius-sm);background:var(--fg);
+  color:#fff;border:none;font-size:14px;font-weight:500;cursor:pointer;font-family:var(--font-sans)}
+.login-btn:hover{background:#000}
+.login-error{font-size:12px;color:var(--danger);margin-top:8px}
+
+/* 后台主体 */
+.admin-header{background:rgba(255,255,255,0.72);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--divider-subtle);position:sticky;top:0;z-index:100}
+.admin-header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;
+  justify-content:space-between;padding:14px 24px}
+.admin-header h1{font-size:17px;font-weight:600;letter-spacing:-0.02em}
+.admin-header .refresh-btn{font-size:12px;color:var(--accent-blue);cursor:pointer;
+  background:none;border:none;font-family:var(--font-sans)}
+.admin-header .refresh-btn:hover{opacity:.7}
+
+.container{max-width:1100px;margin:0 auto;padding:32px 24px 64px}
+
+/* 统计卡片 */
+.stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0;
+  border-top:1px solid var(--divider-subtle);border-bottom:1px solid var(--divider-subtle);margin-bottom:40px}
+.stat-card{padding:16px 18px;border-right:1px solid var(--divider-subtle)}
+.stat-card:last-child{border-right:none}
+.stat-label{font-size:11px;color:var(--fg-secondary);font-weight:400;letter-spacing:0.04em}
+.stat-value{font-size:26px;font-weight:400;margin-top:4px;line-height:1.1;
+  font-variant-numeric:tabular-nums;letter-spacing:-0.03em}
+.stat-delta{font-size:11px;color:var(--fg-tertiary);margin-top:4px}
+
+/* 图表区域 */
+.chart-section{margin-bottom:40px}
+.chart-title{font-size:17px;font-weight:600;margin-bottom:4px;letter-spacing:-0.02em}
+.chart-sub{font-size:12px;color:var(--fg-secondary);margin-bottom:16px}
+.chart-wrap{background:var(--bg-elevated);border:1px solid var(--divider-subtle);
+  border-radius:var(--radius);padding:20px;position:relative}
+.chart-svg{display:block;width:100%;height:auto;overflow:visible}
+
+/* 表格 */
+.table-section{margin-bottom:40px}
+.table-title{font-size:17px;font-weight:600;margin-bottom:4px;letter-spacing:-0.02em}
+.table-sub{font-size:12px;color:var(--fg-secondary);margin-bottom:16px}
+.data-table{width:100%;border-collapse:collapse;font-size:13px;font-family:var(--font-sans)}
+.data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--fg-secondary);
+  font-size:11px;letter-spacing:0.04em;border-bottom:1px solid var(--divider-subtle)}
+.data-table td{padding:10px 12px;border-bottom:1px solid var(--divider-subtle);color:var(--fg)}
+.data-table tr:hover td{background:var(--bg)}
+.data-table .text-cell{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 环形图 */
+.donut-wrap{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.donut-svg{flex:none}
+.donut-legend{flex:1;min-width:200px}
+.donut-legend .lg-item{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px}
+.donut-legend .lg-dot{width:10px;height:10px;border-radius:2px;flex:none}
+.donut-legend .lg-val{margin-left:auto;color:var(--fg-secondary);font-variant-numeric:tabular-nums}
+
+/* 邀请码管理 */
+.invite-create-wrap{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+.invite-field{display:flex;flex-direction:column;gap:4px}
+.invite-field label{font-size:11px;color:var(--fg-secondary);letter-spacing:0.04em}
+.invite-input{background:var(--bg-elevated);border:1px solid var(--divider);
+  border-radius:var(--radius-sm);padding:8px 12px;font-size:13px;outline:none;
+  font-family:var(--font-sans);color:var(--fg);min-width:160px}
+.invite-input:focus{border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(0,113,227,0.12)}
+.invite-input-narrow{min-width:80px;width:80px}
+.invite-btn{padding:9px 20px;border-radius:var(--radius-sm);background:var(--fg);
+  color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;
+  font-family:var(--font-sans);white-space:nowrap}
+.invite-btn:hover{background:#000}
+.invite-btn:disabled{opacity:.5;cursor:not-allowed}
+.invite-result{margin-bottom:16px}
+.invite-result .invite-code-box{display:inline-flex;align-items:center;gap:8px;
+  background:var(--bg);border:1px solid var(--divider-subtle);border-radius:var(--radius-sm);
+  padding:6px 12px;margin:4px 4px 0 0;font-family:var(--mono);font-size:13px}
+.invite-result .copy-btn{font-size:11px;color:var(--accent-blue);cursor:pointer;
+  background:none;border:none;font-family:var(--font-sans)}
+.invite-result .copy-btn:hover{opacity:.7}
+.invite-status{font-size:11px;padding:2px 8px;border-radius:3px;font-weight:500}
+.invite-status.used{background:#F8E8E8;color:#B87878}
+.invite-status.available{background:#E8F5EE;color:#6BA889}
+.invite-delete-btn{font-size:11px;color:var(--danger);cursor:pointer;
+  background:none;border:none;font-family:var(--font-sans)}
+.invite-delete-btn:hover{opacity:.7}
+.invite-delete-btn:disabled{opacity:.3;cursor:not-allowed}
+
+@media(max-width:768px){
+  .stats-grid{grid-template-columns:repeat(3,1fr)}
+  .stat-card:nth-child(3){border-right:none}
+  .stat-card:nth-child(n+4){border-top:1px solid var(--divider-subtle)}
+  .container{padding:20px 16px 40px}
+}
+@media(max-width:480px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .stat-card:nth-child(2){border-right:none}
+  .stat-card:nth-child(n+3){border-top:1px solid var(--divider-subtle)}
+}
+</style>
+</head>
+<body>
+
+<!-- 登录页 -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <h1>数据后台</h1>
+    <p>请输入管理密码</p>
+    <input type="password" class="login-input" id="loginPassword" placeholder="管理密码" autocomplete="current-password">
+    <button class="login-btn" id="loginBtn">进入后台</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- 后台主体（默认隐藏） -->
+<div id="adminBody" style="display:none">
+  <div class="admin-header">
+    <div class="admin-header-inner">
+      <h1>AutoTreehole 数据后台</h1>
+      <button class="refresh-btn" onclick="loadData()">刷新数据</button>
+    </div>
+  </div>
+  <div class="container">
+    <!-- 概览 -->
+    <div class="stats-grid" id="overviewGrid"></div>
+
+    <!-- 用户增长曲线 -->
+    <div class="chart-section">
+      <div class="chart-title">用户增长曲线</div>
+      <div class="chart-sub">累计注册用户数随时间变化</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="growthChart"></svg></div>
+    </div>
+
+    <!-- 日活跃用户 -->
+    <div class="chart-section">
+      <div class="chart-title">日活跃用户（DAU）</div>
+      <div class="chart-sub">近 30 天每日活跃用户数</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="dauChart"></svg></div>
+    </div>
+
+    <!-- 浏览量趋势 -->
+    <div class="chart-section">
+      <div class="chart-title">帖子浏览量趋势</div>
+      <div class="chart-sub">近 30 天每日浏览量</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="viewsChart"></svg></div>
+    </div>
+
+    <!-- 分类浏览分布 -->
+    <div class="chart-section">
+      <div class="chart-title">分类浏览分布</div>
+      <div class="chart-sub">各分类帖子的浏览占比</div>
+      <div class="chart-wrap">
+        <div class="donut-wrap" id="categoryViewsWrap"></div>
+      </div>
+    </div>
+
+    <!-- 热门帖子 -->
+    <div class="table-section">
+      <div class="table-title">热门帖子（浏览量 Top 20）</div>
+      <div class="chart-sub">按浏览次数排序</div>
+      <table class="data-table">
+        <thead><tr><th>#</th><th>洞号</th><th>分类</th><th>浏览量</th><th>内容摘要</th></tr></thead>
+        <tbody id="topPostsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 最近注册用户 -->
+    <div class="table-section">
+      <div class="table-title">最近注册用户</div>
+      <div class="chart-sub">最新 50 位注册用户</div>
+      <table class="data-table">
+        <thead><tr><th>邮箱</th><th>注册时间</th><th>最后访问</th><th>访问次数</th><th>累计时长</th></tr></thead>
+        <tbody id="recentUsersBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 邀请码管理 -->
+    <div class="table-section">
+      <div class="table-title">邀请码管理</div>
+      <div class="chart-sub" id="inviteStats">邀请码统计</div>
+
+      <!-- 生成邀请码 -->
+      <div class="invite-create-wrap">
+        <div class="invite-field">
+          <label>自定义码（留空则随机生成）</label>
+          <input type="text" id="inviteCustomCode" class="invite-input" placeholder="留空随机" maxlength="20" style="text-transform:uppercase">
+        </div>
+        <div class="invite-field">
+          <label>备注</label>
+          <input type="text" id="inviteNote" class="invite-input" placeholder="给谁的？如：张三" maxlength="200">
+        </div>
+        <div class="invite-field">
+          <label>数量</label>
+          <input type="number" id="inviteCount" class="invite-input invite-input-narrow" value="1" min="1" max="50">
+        </div>
+        <button class="invite-btn" id="inviteCreateBtn">生成邀请码</button>
+      </div>
+      <div id="inviteCreateResult" class="invite-result"></div>
+
+      <!-- 邀请码列表 -->
+      <table class="data-table" style="margin-top:20px">
+        <thead><tr><th>邀请码</th><th>备注</th><th>创建时间</th><th>状态</th><th>使用者</th><th>使用时间</th><th></th></tr></thead>
+        <tbody id="inviteListBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = '/api';
+let adminKey = '';
+
+// 登录
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const pwd = document.getElementById('loginPassword').value;
+  if(!pwd){ document.getElementById('loginError').textContent = '请输入密码'; return; }
+  adminKey = pwd;
+  try{
+    const data = await loadData();
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('adminBody').style.display = 'block';
+  }catch(e){
+    document.getElementById('loginError').textContent = '密码错误或服务不可用';
+  }
+});
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if(e.key === 'Enter') document.getElementById('loginBtn').click();
+});
+
+async function loadData(){
+  const resp = await fetch(`${API_BASE}/admin/stats?key=${encodeURIComponent(adminKey)}`);
+  if(!resp.ok) throw new Error('Failed');
+  const data = await resp.json();
+  renderOverview(data.overview);
+  renderGrowth(data.growth);
+  renderDau(data.dau);
+  renderViews(data.viewsTrend);
+  renderCategoryViews(data.categoryViews);
+  renderTopPosts(data.topPosts);
+  renderRecentUsers(data.recentUsers);
+  renderInviteStats(data.invite);
+  await loadInviteList();
+  return data;
+}
+
+function renderOverview(o){
+  const items = [
+    {label:'总注册用户', value:o.totalUsers, delta:''},
+    {label:'今日新增', value:o.newToday, delta:''},
+    {label:'今日活跃', value:o.activeToday, delta:''},
+    {label:'总浏览量', value:o.totalViews, delta:''},
+    {label:'今日浏览', value:o.viewsToday, delta:''},
+  ];
+  document.getElementById('overviewGrid').innerHTML = items.map(i => `
+    <div class="stat-card">
+      <div class="stat-label">${i.label}</div>
+      <div class="stat-value">${i.value}</div>
+      <div class="stat-delta">${i.delta}</div>
+    </div>`).join('');
+}
+
+// SVG 折线图通用绘制函数
+function drawLineChart(svgId, dataPoints, valueKey, color){
+  const svg = document.getElementById(svgId);
+  if(!dataPoints || dataPoints.length === 0){
+    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#86868B" font-size="13">暂无数据</text>';
+    return;
+  }
+  const W = 1000, H = 240, padL = 50, padR = 20, padT = 20, padB = 40;
+  const values = dataPoints.map(d => d[valueKey]);
+  const maxVal = Math.max(...values, 1);
+  const xStep = (W - padL - padR) / Math.max(dataPoints.length - 1, 1);
+
+  // Y 轴刻度
+  const yTicks = 4;
+  let gridLines = '';
+  for(let i = 0; i <= yTicks; i++){
+    const y = padT + (H - padT - padB) * (1 - i / yTicks);
+    const val = Math.round(maxVal * i / yTicks);
+    gridLines += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E8E8ED" stroke-width="1"/>`;
+    gridLines += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${val}</text>`;
+  }
+
+  // X 轴标签
+  let xLabels = '';
+  const labelStep = Math.max(1, Math.floor(dataPoints.length / 8));
+  dataPoints.forEach((d, i) => {
+    if(i % labelStep === 0 || i === dataPoints.length - 1){
+      const x = padL + i * xStep;
+      const label = d.day ? d.day.slice(5) : '';
+      xLabels += `<text x="${x}" y="${H-padB+18}" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">${label}</text>`;
+    }
+  });
+
+  // 折线
+  const points = dataPoints.map((d, i) => {
+    const x = padL + i * xStep;
+    const y = padT + (H - padT - padB) * (1 - d[valueKey] / maxVal);
+    return `${x},${y}`;
+  }).join(' ');
+
+  // 填充区域
+  const areaPoints = `${padL},${H-padB} ${points} ${padL + (dataPoints.length-1)*xStep},${H-padB}`;
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = `
+    ${gridLines}
+    ${xLabels}
+    <polygon points="${areaPoints}" fill="${color}" opacity="0.08"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+    ${dataPoints.map((d, i) => {
+      const x = padL + i * xStep;
+      const y = padT + (H - padT - padB) * (1 - d[valueKey] / maxVal);
+      return `<circle cx="${x}" cy="${y}" r="3" fill="${color}"/>`;
+    }).join('')}
+  `;
+}
+
+function renderGrowth(data){
+  drawLineChart('growthChart', data, 'cumulative', '#0071E3');
+}
+function renderDau(data){
+  drawLineChart('dauChart', data, 'active', '#34C759');
+}
+function renderViews(data){
+  drawLineChart('viewsChart', data, 'views', '#FF9500');
+}
+
+function renderCategoryViews(data){
+  const wrap = document.getElementById('categoryViewsWrap');
+  if(!data || data.length === 0){
+    wrap.innerHTML = '<span style="color:#86868B;font-size:13px">暂无数据</span>';
+    return;
+  }
+  const total = data.reduce((s, d) => s + d.views, 0);
+  const colors = {'学习':'#5B8DBF','情感':'#B87878','生活':'#6BA889','时事':'#8B7BB8','娱乐':'#B89A6B','求助':'#7BB0C4','其他':'#86868B'};
+  // 环形图
+  let cumulative = 0;
+  const r = 60, cx = 70, cy = 70, sw = 16;
+  const circumference = 2 * Math.PI * r;
+  let arcs = '';
+  data.forEach(d => {
+    const pct = d.views / total;
+    const dashLen = pct * circumference;
+    const offset = -cumulative * circumference;
+    const color = colors[d.category] || '#86868B';
+    arcs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-dasharray="${dashLen} ${circumference-dashLen}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    cumulative += pct;
+  });
+  const donut = `<svg class="donut-svg" width="140" height="140" viewBox="0 0 140 140">
+    ${arcs}
+    <text x="70" y="66" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">总浏览</text>
+    <text x="70" y="84" text-anchor="middle" fill="#1D1D1F" font-size="18" font-weight="600" font-family="sans-serif">${total}</text>
+  </svg>`;
+  const legend = `<div class="donut-legend">${data.map(d => {
+    const pct = (d.views / total * 100).toFixed(1);
+    const color = colors[d.category] || '#86868B';
+    return `<div class="lg-item"><span class="lg-dot" style="background:${color}"></span>${d.category}<span class="lg-val">${d.views} (${pct}%)</span></div>`;
+  }).join('')}</div>`;
+  wrap.innerHTML = donut + legend;
+}
+
+function renderTopPosts(posts){
+  const body = document.getElementById('topPostsBody');
+  if(!posts || posts.length === 0){
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+    return;
+  }
+  body.innerHTML = posts.map((p, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><a href="/?pid=${p.pid}" target="_blank">#${p.pid}</a></td>
+      <td>${p.category || '其他'}</td>
+      <td>${p.views}</td>
+      <td class="text-cell">${esc(p.text || '(无内容)')}</td>
+    </tr>`).join('');
+}
+
+function renderRecentUsers(users){
+  const body = document.getElementById('recentUsersBody');
+  if(!users || users.length === 0){
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无注册用户</td></tr>';
+    return;
+  }
+  body.innerHTML = users.map(u => {
+    const dur = u.total_duration || 0;
+    const durStr = dur >= 3600 ? `${Math.floor(dur/3600)}h ${Math.floor((dur%3600)/60)}m` : `${Math.floor(dur/60)}m`;
+    return `<tr>
+      <td>${esc(u.email)}</td>
+      <td>${fmtTime(u.verified_at)}</td>
+      <td>${fmtTime(u.last_visit)}</td>
+      <td>${u.visit_count || 0}</td>
+      <td>${durStr}</td>
+    </tr>`;
+  }).join('');
+}
+
+function fmtTime(ts){
+  if(!ts) return '—';
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ==================== 邀请码管理 ==================== */
+function renderInviteStats(inv){
+  if(!inv){ document.getElementById('inviteStats').textContent = '邀请码统计'; return; }
+  document.getElementById('inviteStats').textContent =
+    `总数 ${inv.total} · 已使用 ${inv.used} · 可用 ${inv.available}`;
+}
+
+async function loadInviteList(){
+  try{
+    const resp = await fetch(`${API_BASE}/admin/invite/list?key=${encodeURIComponent(adminKey)}`);
+    if(!resp.ok) throw new Error('Failed');
+    const list = await resp.json();
+    renderInviteList(list);
+  }catch(e){ /* ignore */ }
+}
+
+function renderInviteList(list){
+  const body = document.getElementById('inviteListBody');
+  if(!list || list.length === 0){
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#86868B;padding:24px">暂无邀请码</td></tr>';
+    return;
+  }
+  body.innerHTML = list.map(c => `
+    <tr>
+      <td><code style="font-family:var(--mono);font-size:13px">${esc(c.code)}</code></td>
+      <td class="text-cell">${esc(c.note || '—')}</td>
+      <td>${fmtTime(c.created_at)}</td>
+      <td>${c.used_at
+        ? '<span class="invite-status used">已使用</span>'
+        : '<span class="invite-status available">可用</span>'}</td>
+      <td>${c.used_by ? esc(c.used_by) : '—'}</td>
+      <td>${c.used_at ? fmtTime(c.used_at) : '—'}</td>
+      <td><button class="invite-delete-btn" onclick="deleteInvite('${esc(c.code)}')" ${c.used_at ? 'disabled' : ''}>删除</button></td>
+    </tr>`).join('');
+}
+
+async function createInvite(){
+  const code = document.getElementById('inviteCustomCode').value.trim().toUpperCase();
+  const note = document.getElementById('inviteNote').value.trim();
+  const count = parseInt(document.getElementById('inviteCount').value, 10) || 1;
+  const btn = document.getElementById('inviteCreateBtn');
+  const resultEl = document.getElementById('inviteCreateResult');
+  btn.disabled = true; btn.textContent = '生成中…';
+  resultEl.innerHTML = '';
+  try{
+    const resp = await fetch(`${API_BASE}/admin/invite/create?key=${encodeURIComponent(adminKey)}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({code, note, count})
+    });
+    if(!resp.ok){
+      const err = await resp.json();
+      throw new Error(err.error || '生成失败');
+    }
+    const data = await resp.json();
+    resultEl.innerHTML = data.codes.map(c =>
+      `<span class="invite-code-box"><code>${esc(c)}</code><button class="copy-btn" onclick="copyCode('${esc(c)}')">复制</button></span>`
+    ).join('');
+    document.getElementById('inviteCustomCode').value = '';
+    document.getElementById('inviteNote').value = '';
+    await loadInviteList();
+    // 刷新统计数字
+    try {
+      const sr = await fetch(`${API_BASE}/admin/stats?key=${encodeURIComponent(adminKey)}`);
+      if(sr.ok){ const sd = await sr.json(); renderInviteStats(sd.invite); }
+    } catch(_) {}
+  }catch(e){
+    resultEl.innerHTML = `<span style="color:var(--danger);font-size:13px">${esc(e.message)}</span>`;
+  }finally{
+    btn.disabled = false; btn.textContent = '生成邀请码';
+  }
+}
+
+async function deleteInvite(code){
+  if(!confirm(`确认删除邀请码 ${code}？`)) return;
+  try{
+    const resp = await fetch(`${API_BASE}/admin/invite/delete?key=${encodeURIComponent(adminKey)}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({code})
+    });
+    if(!resp.ok){
+      const err = await resp.json();
+      throw new Error(err.error || '删除失败');
+    }
+    await loadInviteList();
+    try {
+      const sr = await fetch(`${API_BASE}/admin/stats?key=${encodeURIComponent(adminKey)}`);
+      if(sr.ok){ const sd = await sr.json(); renderInviteStats(sd.invite); }
+    } catch(_) {}
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+function copyCode(code){
+  navigator.clipboard.writeText(code).then(() => {
+    // 短暂提示
+    const el = event.target;
+    const orig = el.textContent;
+    el.textContent = '已复制';
+    setTimeout(() => { el.textContent = orig; }, 1200);
+  });
+}
+
+document.getElementById('inviteCreateBtn').addEventListener('click', createInvite);
+</script>
+</body>
+</html>

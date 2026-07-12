@@ -1,0 +1,42 @@
+# 环境变量（含 API Keys 等密钥，绝不提交）
+.env
+
+# 数据库
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# 部署与运维脚本（含服务器凭证，不公开）
+deploy/
+
+# 报告与生成产物
+reports/
+*.gz
+*.zip
+*.tar.gz
+
+# 临时文件
+*.tmp
+*.log
+*.b64
+*.txt
+!LICENSE.txt
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
