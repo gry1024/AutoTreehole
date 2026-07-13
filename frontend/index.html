@@ -711,6 +711,19 @@ mark{
   padding:20px 0 28px;margin-bottom:0;
   border-bottom:1px solid var(--divider-subtle);
 }
+/* 收藏按钮 */
+.fav-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:13px;font-family:var(--font-sans);
+  color:var(--fg-secondary);background:none;border:none;
+  cursor:pointer;padding:4px 10px;border-radius:var(--radius-sm);
+  transition:color .2s,background .2s;
+}
+.fav-btn:hover{background:var(--bg-hover);color:var(--fg)}
+.fav-btn svg{width:15px;height:15px;transition:fill .2s,stroke .2s}
+.fav-btn.is-fav{color:#B87878}
+.fav-btn.is-fav svg{fill:#B87878;stroke:#B87878}
+.fav-btn:not(.is-fav) svg{fill:none;stroke:currentColor}
 .detail-post .detail-title{
   font-size:12px;color:var(--fg-secondary);
   font-weight:400;letter-spacing:0.06em;
@@ -1531,6 +1544,7 @@ mark{
       <button class="tab-btn active" data-panel="overview">概览</button>
       <button class="tab-btn" data-panel="hot">热帖</button>
       <button class="tab-btn" data-panel="report">AI报告</button>
+      <button class="tab-btn" data-panel="favorites">我的收藏</button>
       <button class="tab-btn" data-panel="detail">详情</button>
       <button class="tab-btn" data-panel="about">关于</button>
     </nav>
@@ -1687,6 +1701,22 @@ mark{
             <p>选择模式与模型，点击「生成报告」开始分析。全周模式总结近期热点与社区情绪，关键词模式聚焦特定主题。</p>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 我的收藏 ========== -->
+  <section class="panel" id="panel-favorites">
+    <div class="section-head">
+      <div>
+        <div class="section-title">我的收藏</div>
+        <div class="section-sub">你收藏的帖子会同步保存在账户下，换设备登录也能看到</div>
+      </div>
+    </div>
+    <div id="favoritesList">
+      <div style="text-align:center;padding:48px 24px;color:var(--fg-secondary)">
+        <span class="spinner spinner-lg"></span>
+        <div style="margin-top:12px;font-size:14px;font-weight:300">加载中…</div>
       </div>
     </div>
   </section>
@@ -2171,6 +2201,9 @@ function switchPanel(name){
   if(name === 'overview'){
     loadStats();
     loadOverviewHot();
+  }
+  if(name === 'favorites'){
+    loadFavorites();
   }
   if(name === 'detail'){
     // 直接通过 Tab 进入详情，清除返回来源、隐藏返回按钮
@@ -2995,6 +3028,10 @@ function renderDetail(data, area){
         <span>收藏：<b>${fmtNum(post.likenum)}</b></span>
         <span>评论：<b>${fmtNum(post.reply)}</b></span>
         ${post.category?`<span class="category-tag" style="color:${CAT_COLORS[post.category]||'#86868B'}">分类：<b>${esc(post.category)}</b></span>`:''}
+        <button class="fav-btn" id="detailFavBtn" data-pid="${esc(post.pid)}" title="收藏到我的收藏">
+          <svg viewBox="0 0 16 16" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14s-5-3.5-5-7a2.8 2.8 0 015-1.8A2.8 2.8 0 0113 7c0 3.5-5 7-5 7z"/></svg>
+          <span class="fav-label">收藏</span>
+        </button>
         <a href="https://treehole.pku.edu.cn/web/#/hole/${esc(post.pid)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto">在树洞打开 ↗</a>
       </div>
     </div>
@@ -3017,6 +3054,101 @@ function renderDetail(data, area){
       }).catch(() => flash('error', '复制失败，请手动选中复制'));
     });
   }
+  // 收藏按钮初始化
+  initDetailFavBtn(post.pid);
+}
+
+/* ==================== 帖子收藏 ==================== */
+// 初始化详情页收藏按钮（查询当前状态并绑定点击）
+async function initDetailFavBtn(pid){
+  const btn = document.getElementById('detailFavBtn');
+  if(!btn) return;
+  // 先查询是否已收藏
+  try{
+    const st = await api('/favorite/status', {method:'POST', body:{pids:[pid]}});
+    if(st.favorited && st.favorited[pid]){
+      btn.classList.add('is-fav');
+      btn.querySelector('.fav-label').textContent = '已收藏';
+    }
+  }catch(e){ /* 未登录时静默 */ }
+  btn.addEventListener('click', async () => {
+    try{
+      const r = await api('/favorite/toggle', {method:'POST', body:{pid}});
+      if(r.favorited){
+        btn.classList.add('is-fav');
+        btn.querySelector('.fav-label').textContent = '已收藏';
+        flash('success', '已收藏');
+      }else{
+        btn.classList.remove('is-fav');
+        btn.querySelector('.fav-label').textContent = '收藏';
+        flash('info', '已取消收藏');
+      }
+    }catch(e){
+      flash('error', e.message || '操作失败');
+    }
+  });
+}
+
+// 加载收藏列表
+async function loadFavorites(){
+  const list = document.getElementById('favoritesList');
+  if(!list) return;
+  list.innerHTML = `<div style="text-align:center;padding:48px 24px;color:var(--fg-secondary)">
+    <span class="spinner spinner-lg"></span>
+    <div style="margin-top:12px;font-size:14px;font-weight:300">加载中…</div>
+  </div>`;
+  try{
+    const data = await api('/favorite/list');
+    renderFavorites(data.favorites || []);
+  }catch(e){
+    list.innerHTML = `<div class="empty-state">
+      <div style="font-size:14px;color:var(--fg-secondary)">${esc(e.message || '加载失败')}</div>
+      <div style="font-size:12px;margin-top:8px;color:var(--fg-tertiary)">登录后即可使用收藏功能</div>
+    </div>`;
+  }
+}
+
+// 渲染收藏列表（复用热帖卡片样式）
+function renderFavorites(items){
+  const list = document.getElementById('favoritesList');
+  if(!list) return;
+  if(items.length === 0){
+    list.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M8 14s-5-3.5-5-7a2.8 2.8 0 015-1.8A2.8 2.8 0 0113 7c0 3.5-5 7-5 7z"/></svg>
+      <div>还没有收藏任何帖子</div>
+      <div style="font-size:12px;margin-top:8px;color:var(--fg-tertiary)">在帖子详情页点击「收藏」按钮即可保存</div>
+    </div>`;
+    return;
+  }
+  list.innerHTML = items.map(p => {
+    const t = p.type === 'image' ? 'image' : 'text';
+    const excerpt = (p.text || '').slice(0, 200);
+    return `<div class="bubble-card fav-card" data-pid="${esc(p.pid)}" style="cursor:pointer">
+      <div class="bc-head">
+        <span class="bc-pid">#${esc(p.pid)}</span>
+        <span class="type-tag ${t==='image'?'image':'text'}">${t==='image'?'图片':'文本'}</span>
+        ${p.category?`<span class="category-tag" style="color:${CAT_COLORS[p.category]||'#86868B'}">${esc(p.category)}</span>`:''}
+        <span class="bc-time">收藏于 ${fmtTime(p.favorited_at)}</span>
+      </div>
+      <div class="bc-text">${esc(excerpt)}</div>
+      <div class="bc-footer">
+        <span>收藏 ${fmtNum(p.likenum)}</span>
+        <span>评论 ${fmtNum(p.reply)}</span>
+        <span>发布 ${fmtTime(p.timestamp)}</span>
+      </div>
+    </div>`;
+  }).join('');
+  // 点击跳转详情
+  list.querySelectorAll('.fav-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const pid = card.dataset.pid;
+      detailOrigin = 'favorites';
+      switchPanel('detail');
+      document.getElementById('detailPid').value = pid;
+      loadDetail(pid);
+      document.getElementById('detailBackBtn').style.display = 'flex';
+    });
+  });
 }
 
 /* ==================== Token 过期检测 ==================== */

@@ -333,6 +333,15 @@ function ensureDb() {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_report_logs_created ON report_logs(created_at);
+    CREATE TABLE IF NOT EXISTS favorites (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email TEXT NOT NULL,
+      pid        INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_email, pid)
+    );
+    CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_email);
+    CREATE INDEX IF NOT EXISTS idx_favorites_pid ON favorites(pid);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -1149,6 +1158,60 @@ function handleTrackHeartbeat(req) {
   return { success: true };
 }
 
+// ==================== 帖子收藏 ====================
+function handleFavoriteToggle(body, req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const pid = parseInt(body.pid, 10);
+  if (!pid || pid < 1) throw new Error("无效的帖子 ID");
+  const email = payload.email;
+  const now = Math.floor(Date.now() / 1000);
+  // 查是否已收藏
+  const exist = queryOne("SELECT id FROM favorites WHERE user_email = ? AND pid = ?", [email, pid]);
+  let favorited;
+  if (exist) {
+    db.prepare("DELETE FROM favorites WHERE user_email = ? AND pid = ?").run(email, pid);
+    favorited = false;
+  } else {
+    db.prepare("INSERT INTO favorites (user_email, pid, created_at) VALUES (?, ?, ?)").run(email, pid, now);
+    favorited = true;
+  }
+  return { success: true, favorited };
+}
+
+function handleFavoriteList(req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  // 联查 holes 表获取帖子详情，按收藏时间倒序
+  const rows = queryAll(
+    `SELECT f.pid, f.created_at as favorited_at, h.text, h.timestamp, h.likenum, h.reply, h.type, h.image_size
+     FROM favorites f
+     LEFT JOIN holes h ON h.pid = f.pid
+     WHERE f.user_email = ?
+     ORDER BY f.created_at DESC`,
+    [email]
+  );
+  return { success: true, favorites: rows };
+}
+
+function handleFavoriteStatus(pids, req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) return { success: true, favorited: {} };
+  const email = payload.email;
+  const idList = (Array.isArray(pids) ? pids : []).map(p => parseInt(p, 10)).filter(p => p > 0);
+  if (idList.length === 0) return { success: true, favorited: {} };
+  if (idList.length > 100) idList.length = 100; // 防止超大 IN 查询
+  const placeholders = idList.map(() => "?").join(",");
+  const rows = queryAll(
+    `SELECT pid FROM favorites WHERE user_email = ? AND pid IN (${placeholders})`,
+    [email, ...idList]
+  );
+  const map = {};
+  rows.forEach(r => { map[r.pid] = true; });
+  return { success: true, favorited: map };
+}
+
 // ==================== 数据后台统计 API ====================
 function handleAdminStats() {
   const totalUsers = queryOne("SELECT COUNT(*) as c FROM users").c;
@@ -1240,6 +1303,28 @@ function handleAdminStats() {
      FROM report_logs ORDER BY created_at DESC LIMIT 50`
   );
 
+  // 收藏统计
+  const totalFavorites = queryOne("SELECT COUNT(*) as c FROM favorites").c;
+  const favoriteUsers = queryOne("SELECT COUNT(DISTINCT user_email) as c FROM favorites").c;
+  // 收藏数 Top 帖子
+  const topFavoritedPosts = queryAll(
+    `SELECT f.pid, COUNT(*) as fav_count, h.text, h.category
+     FROM favorites f LEFT JOIN holes h ON h.pid = f.pid
+     GROUP BY f.pid ORDER BY fav_count DESC LIMIT 20`
+  );
+  // 收藏活跃用户 Top 10
+  const topFavoritingUsers = queryAll(
+    `SELECT user_email, COUNT(*) as fav_count
+     FROM favorites GROUP BY user_email ORDER BY fav_count DESC LIMIT 10`
+  );
+  // 近 30 天收藏趋势
+  const favoritesTrend = queryAll(
+    `SELECT date(created_at, 'unixepoch', 'localtime') as day, COUNT(*) as favs
+     FROM favorites WHERE created_at >= ?
+     GROUP BY day ORDER BY day ASC`,
+    [Math.floor(Date.now() / 1000) - 30 * 86400]
+  );
+
   return {
     overview: { totalUsers, newToday, activeToday, totalViews, viewsToday },
     growth: growthSeries,
@@ -1284,6 +1369,24 @@ function handleAdminStats() {
         success: !!r.success,
         errMsg: r.err_msg,
         createdAt: r.created_at,
+      })),
+    },
+    favorites: {
+      total: totalFavorites,
+      users: favoriteUsers,
+      topPosts: topFavoritedPosts.map(p => ({
+        pid: p.pid,
+        favCount: p.fav_count,
+        text: p.text,
+        category: p.category,
+      })),
+      topUsers: topFavoritingUsers.map(u => ({
+        email: u.user_email,
+        favCount: u.fav_count,
+      })),
+      trend: favoritesTrend.map(t => ({
+        day: t.day,
+        favs: t.favs,
       })),
     },
   };
@@ -1453,6 +1556,31 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, handleTrackHeartbeat(req));
       return;
     }
+    // 帖子收藏：toggle / list / status
+    if (route === "favorite/toggle") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleFavoriteToggle(body, req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "favorite/list") {
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleFavoriteList(req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "favorite/status") {
+      const body = req.method === "POST" ? JSON.parse((await readBody(req)) || "{}") : query;
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleFavoriteStatus(body.pids, req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
 
     // 数据后台接口（需要管理员密码）
     if (route === "admin/stats") {
@@ -1556,6 +1684,46 @@ const server = http.createServer(async (req, res) => {
     sendError(res, status, e.message);
   }
 });
+
+// ==================== Token 过期告警（≤5天提醒站长） ====================
+const TOKEN_WARN_DAYS = 5;
+let tokenWarnSent = false; // 同一周期内只发一次
+
+async function checkTokenAndWarn() {
+  if (!PKU_TOKEN || !SITE_OWNER_EMAIL) return;
+  const days = tokenDaysLeft(PKU_TOKEN);
+  if (days === null) return;
+  if (days > TOKEN_WARN_DAYS) {
+    // 恢复后重置标记，便于下次到期再发
+    tokenWarnSent = false;
+    return;
+  }
+  if (tokenWarnSent) return; // 本周期已发过
+  tokenWarnSent = true;
+  try {
+    await getMailer().sendMail({
+      from: MAIL_FROM,
+      to: SITE_OWNER_EMAIL,
+      subject: `【紧急】AutoTreehole Token 将在 ${Math.ceil(days)} 天后过期`,
+      html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
+        <h2 style="color:#FF3B30;font-size:18px;font-weight:600;margin-bottom:20px;">⚠️ 树洞 Token 即将过期</h2>
+        <div style="background:#fff;border-radius:8px;padding:20px 24px;color:#1D1D1F;font-size:14px;line-height:1.8;">
+          <p>当前 Token 剩余有效时间约 <strong>${Math.ceil(days)} 天</strong>（约 ${Math.ceil(days*24)} 小时）。</p>
+          <p>过期后爬虫将无法抓取新帖、图片代理将失效。请尽快登录树洞刷新 Token，并更新服务器 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">.env</code> 中的 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">PKU_TOKEN</code> 与 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">PKU_UUID</code>，然后重启 PM2：<code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">pm2 restart treehole-api --update-env</code>。</p>
+          <p style="color:#86868B;font-size:12px;margin-top:16px;margin-bottom:0;">此邮件由 AutoTreehole 系统自动发送，每过期周期仅发送一次。</p>
+        </div>
+      </div>`,
+    });
+    console.log(`[token-warn] 已发送 Token 过期告警邮件（剩余 ${Math.ceil(days)} 天）`);
+  } catch (e) {
+    console.error(`[token-warn] 告警邮件发送失败: ${e.message}`);
+    tokenWarnSent = false; // 发送失败则允许下次重试
+  }
+}
+
+// 启动后 30 秒检查一次，之后每 6 小时检查一次
+setTimeout(checkTokenAndWarn, 30_000);
+setInterval(checkTokenAndWarn, 6 * 3600_000);
 
 // HTTP 服务器入口：监听指定端口
 server.listen(PORT, () => { console.log(`[treehole-api] 服务启动，监听端口 ${PORT}`); });

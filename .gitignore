@@ -21,6 +21,7 @@ package-lock.json
 
 # 部署与运维脚本（含服务器凭证，不公开）
 deploy/
+askpass.bat
 
 # 报告与生成产物
 reports/

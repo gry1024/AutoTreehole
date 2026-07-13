@@ -235,6 +235,31 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    <!-- 收藏统计 -->
+    <div class="chart-section">
+      <div class="chart-title">帖子收藏趋势</div>
+      <div class="chart-sub" id="favoritesStats">近 30 天每日收藏数</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="favoritesChart"></svg></div>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">收藏数 Top 帖子</div>
+      <div class="chart-sub">被收藏次数最多的帖子（Top 20）</div>
+      <table class="data-table">
+        <thead><tr><th>帖子 PID</th><th>收藏数</th><th>分类</th><th>正文摘要</th></tr></thead>
+        <tbody id="topFavoritedPostsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">收藏活跃用户 Top 10</div>
+      <div class="chart-sub">收藏数最多的用户</div>
+      <table class="data-table">
+        <thead><tr><th>用户邮箱</th><th>收藏数</th></tr></thead>
+        <tbody id="topFavoritingUsersBody"></tbody>
+      </table>
+    </div>
+
     <!-- 邀请码管理 -->
     <div class="table-section">
       <div class="table-title">邀请码管理</div>
@@ -301,6 +326,7 @@ async function loadData(){
   renderRecentUsers(data.recentUsers);
   renderInviteStats(data.invite);
   if(data.reports) renderReports(data.reports);
+  if(data.favorites) renderFavoritesStats(data.favorites);
   await loadInviteList();
   return data;
 }
@@ -511,6 +537,75 @@ function renderReports(r){
   }else{
     rv.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
+}
+
+/* ==================== 收藏统计 ==================== */
+function renderFavoritesStats(r){
+  if(!r) return;
+  const statsEl = document.getElementById('favoritesStats');
+  if(statsEl){
+    statsEl.textContent = `总计 ${r.total} 次收藏 · ${r.users} 位用户参与`;
+  }
+  // 趋势图（单线柱状）
+  drawFavoritesBarChart('favoritesChart', r.trend || []);
+  // Top 帖子
+  const tp = document.getElementById('topFavoritedPostsBody');
+  if(r.topPosts && r.topPosts.length){
+    tp.innerHTML = r.topPosts.map(p => {
+      const summary = p.text ? esc(p.text.slice(0, 60)) : '<span style="color:#86868B">已删除</span>';
+      const cat = p.category ? esc(p.category) : '-';
+      return `<tr><td>${p.pid}</td><td style="color:#B87878;font-weight:600">${p.favCount}</td><td>${cat}</td><td class="text-cell" title="${esc(p.text||'')}">${summary}</td></tr>`;
+    }).join('');
+  }else{
+    tp.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+  // Top 用户
+  const tu = document.getElementById('topFavoritingUsersBody');
+  if(r.topUsers && r.topUsers.length){
+    tu.innerHTML = r.topUsers.map(u => {
+      const email = u.email && u.email.startsWith('invite:') ? '邀请码用户' : esc(u.email);
+      return `<tr><td>${email}</td><td style="color:#B87878;font-weight:600">${u.favCount}</td></tr>`;
+    }).join('');
+  }else{
+    tu.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+}
+
+// 收藏趋势柱状图（单色）
+function drawFavoritesBarChart(svgId, dataPoints){
+  const svg = document.getElementById(svgId);
+  if(!dataPoints || dataPoints.length === 0){
+    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#86868B" font-size="13">暂无数据</text>';
+    return;
+  }
+  const W = 1000, H = 240, padL = 50, padR = 20, padT = 20, padB = 40;
+  const vals = dataPoints.map(d => d.favs || 0);
+  const maxVal = Math.max(...vals, 1);
+  const groupW = (W - padL - padR) / dataPoints.length;
+  const barW = Math.max(groupW * 0.6, 2);
+  let grid = '';
+  for(let i = 0; i <= 4; i++){
+    const y = padT + (H - padT - padB) * (1 - i / 4);
+    const v = Math.round(maxVal * i / 4);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E8E8ED" stroke-width="1"/>`;
+    grid += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${v}</text>`;
+  }
+  let bars = '';
+  let labels = '';
+  const labelStep = Math.max(1, Math.floor(dataPoints.length / 8));
+  dataPoints.forEach((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const v = d.favs || 0;
+    const h = v / maxVal * (H - padT - padB);
+    const baseY = H - padB;
+    bars += `<rect x="${cx - barW/2}" y="${baseY - h}" width="${barW}" height="${h}" fill="#B87878" rx="2"/>`;
+    if(i % labelStep === 0 || i === dataPoints.length - 1){
+      labels += `<text x="${cx}" y="${H - padB + 14}" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">${(d.day||'').slice(5)}</text>`;
+    }
+  });
+  svg.innerHTML = grid + bars + labels;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 }
 
 // 堆叠柱状图（成功绿色 + 失败红色）
