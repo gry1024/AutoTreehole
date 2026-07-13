@@ -678,7 +678,7 @@ ${formatPostsBlock(rows)}
   return { system, user };
 }
 
-async function callLlm(system, user, provider, customConfig) {
+async function callLlm(system, user, provider, customConfig, ip = "") {
   // 支持自定义 provider 配置（用户在前端填入 api-key / model / url）
   let p;
   if (customConfig && customConfig.apiKey && customConfig.url && customConfig.model) {
@@ -866,7 +866,7 @@ async function handleReport(body, ip) {
   }
 
   try {
-    const content = await callLlm(promptData.system, promptData.user, provider, customConfig);
+    const content = await callLlm(promptData.system, promptData.user, provider, customConfig, ip);
     logReportCall(ip, provider, mode, true);
     return { content: enrichReport(content) };
   } catch (e) {
