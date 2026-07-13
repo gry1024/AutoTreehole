@@ -260,6 +260,16 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    <!-- 订阅统计 -->
+    <div class="table-section">
+      <div class="table-title">关键词订阅统计</div>
+      <div class="chart-sub" id="subStats">订阅概况</div>
+      <table class="data-table" style="margin-top:16px">
+        <thead><tr><th>关键词</th><th>订阅人数</th></tr></thead>
+        <tbody id="topKeywordsBody"></tbody>
+      </table>
+    </div>
+
     <!-- 邀请码管理 -->
     <div class="table-section">
       <div class="table-title">邀请码管理</div>
@@ -327,6 +337,7 @@ async function loadData(){
   renderInviteStats(data.invite);
   if(data.reports) renderReports(data.reports);
   if(data.favorites) renderFavoritesStats(data.favorites);
+  if(data.subscriptions) renderSubsStats(data.subscriptions);
   await loadInviteList();
   return data;
 }
@@ -568,6 +579,23 @@ function renderFavoritesStats(r){
     }).join('');
   }else{
     tu.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+}
+
+/* ==================== 订阅统计 ==================== */
+function renderSubsStats(r){
+  if(!r) return;
+  const statsEl = document.getElementById('subStats');
+  if(statsEl){
+    statsEl.textContent = `共 ${r.total} 个订阅 · ${r.users} 位用户参与 · 累计推送 ${r.sentTotal} 次 · 今日推送 ${r.sentToday} 次`;
+  }
+  const tk = document.getElementById('topKeywordsBody');
+  if(r.topKeywords && r.topKeywords.length){
+    tk.innerHTML = r.topKeywords.map(k => {
+      return `<tr><td style="font-weight:500">${esc(k.keyword)}</td><td style="color:#B87878;font-weight:600">${k.count}</td></tr>`;
+    }).join('');
+  }else{
+    tk.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无订阅</td></tr>';
   }
 }
 

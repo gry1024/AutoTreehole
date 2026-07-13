@@ -41,6 +41,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
 // 站长邮箱（接收用户留言，绝不暴露给前端）
 const SITE_OWNER_EMAIL = process.env.SITE_OWNER_EMAIL || "";
+// 站点公开地址（用于邮件内链接，如 https://autoth.example.com）
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
 // 留言频率限制（防邮箱轰炸）
 const MESSAGE_IP_HOURLY_LIMIT = 2;   // 每 IP 每小时最多 2 条
 const MESSAGE_IP_DAILY_LIMIT = 3;    // 每 IP 每天最多 3 条
@@ -220,6 +222,21 @@ function sendJson(res, status, data) {
 
 function sendError(res, status, message) { sendJson(res, status, { error: message }); }
 
+/** 退订确认 HTML 页（邮件链接点击后展示） */
+function sendUnsubHtml(res, message) {
+  const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>退订确认</title></head>
+  <body style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;background:#F5F5F7;margin:0;padding:48px 24px;">
+    <div style="max-width:420px;margin:0 auto;background:#fff;border-radius:12px;padding:40px 32px;text-align:center;">
+      <div style="font-size:40px;margin-bottom:16px;">✓</div>
+      <h1 style="color:#1D1D1F;font-size:20px;font-weight:600;margin:0 0 12px;">退订成功</h1>
+      <p style="color:#86868B;font-size:14px;line-height:1.6;margin:0;">${message}</p>
+      <p style="color:#86868B;font-size:12px;margin-top:24px;">你将不再收到该关键词的推送邮件。如需重新订阅，请前往 AutoTreehole 网站订阅页。</p>
+    </div>
+  </body></html>`;
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(html);
+}
+
 function fmtTime(ts) {
   if (!ts) return "未知时间";
   return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
@@ -231,6 +248,15 @@ function isUseful(text) {
   let alpha = 0;
   for (const c of s) { if (/[a-zA-Z\u4e00-\u9fff]/.test(c)) { alpha++; if (alpha >= 2) return true; } }
   return false;
+}
+
+/** HTML 转义（用于邮件正文，防止帖子内容破坏 HTML / 注入） */
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function validateInt(val, min, max, def) {
@@ -342,6 +368,24 @@ function ensureDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_email);
     CREATE INDEX IF NOT EXISTS idx_favorites_pid ON favorites(pid);
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email   TEXT NOT NULL,
+      notify_email TEXT NOT NULL,
+      keyword      TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      UNIQUE(user_email, keyword)
+    );
+    CREATE INDEX IF NOT EXISTS idx_subs_user ON subscriptions(user_email);
+    CREATE INDEX IF NOT EXISTS idx_subs_keyword ON subscriptions(keyword);
+    CREATE TABLE IF NOT EXISTS subscription_sent (
+      sub_id  INTEGER NOT NULL,
+      pid     INTEGER NOT NULL,
+      sent_at INTEGER NOT NULL,
+      PRIMARY KEY(sub_id, pid)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sub_sent_sub ON subscription_sent(sub_id);
+    CREATE TABLE IF NOT EXISTS sub_meta (key TEXT PRIMARY KEY, value TEXT);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -1212,6 +1256,270 @@ function handleFavoriteStatus(pids, req) {
   return { success: true, favorited: map };
 }
 
+// ==================== 关键词订阅 ====================
+const MAX_SUBS_PER_USER = 3;       // 每人最多 3 个关键词
+const SUB_KEYWORD_MIN = 1;
+const SUB_KEYWORD_MAX = 30;
+const SUB_SCAN_INTERVAL_MS = 2 * 60_000; // 每 2 分钟扫描一次
+const SUB_DIGEST_MAX_POSTS = 20;   // 单封摘要最多列 20 条，超出提示
+const SUB_DAILY_CAP = 30;          // 每用户每日最多 30 封（防异常）
+
+function isInviteUser(email) { return email && email.startsWith("invite:"); }
+
+function unsubToken(subId) {
+  const sig = crypto.createHmac("sha256", TOKEN_SECRET).update(`unsub:${subId}`).digest("hex").slice(0, 24);
+  return `${subId}.${sig}`;
+}
+
+function verifyUnsubToken(token) {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const subId = parseInt(parts[0], 10);
+  if (isNaN(subId)) return null;
+  const expected = crypto.createHmac("sha256", TOKEN_SECRET).update(`unsub:${subId}`).digest("hex").slice(0, 24);
+  if (parts[1] !== expected) return null;
+  return subId;
+}
+
+// 用户级一键退订（退订该用户全部关键词）
+function unsubUserToken(email) {
+  const sig = crypto.createHmac("sha256", TOKEN_SECRET).update(`unsuball:${email}`).digest("hex").slice(0, 24);
+  return `${Buffer.from(email).toString("base64url")}.${sig}`;
+}
+
+function verifyUnsubUserToken(token) {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  let email;
+  try { email = Buffer.from(parts[0], "base64url").toString("utf-8"); } catch { return null; }
+  if (!email) return null;
+  const expected = crypto.createHmac("sha256", TOKEN_SECRET).update(`unsuball:${email}`).digest("hex").slice(0, 24);
+  if (parts[1] !== expected) return null;
+  return email;
+}
+
+function handleSubscribeList(req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  const rows = queryAll(
+    "SELECT id, keyword, notify_email, created_at FROM subscriptions WHERE user_email = ? ORDER BY created_at ASC",
+    [email]
+  );
+  return { success: true, subscriptions: rows, max: MAX_SUBS_PER_USER, isInvite: isInviteUser(email) };
+}
+
+function handleSubscribeAdd(body, req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  const keyword = String(body.keyword || "").trim();
+  if (keyword.length < SUB_KEYWORD_MIN || keyword.length > SUB_KEYWORD_MAX) {
+    throw new Error(`关键词长度需在 ${SUB_KEYWORD_MIN}-${SUB_KEYWORD_MAX} 字之间`);
+  }
+  // 收信邮箱：邀请码用户必填，校园邮箱用户默认用注册邮箱
+  let notifyEmail = String(body.notifyEmail || "").trim().toLowerCase();
+  if (isInviteUser(email)) {
+    if (!notifyEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(notifyEmail)) {
+      throw new Error("邀请码用户请填写有效的收信邮箱");
+    }
+  } else {
+    notifyEmail = notifyEmail || email;
+  }
+  // 数量上限
+  const cnt = queryOne("SELECT COUNT(*) as c FROM subscriptions WHERE user_email = ?", [email]).c;
+  if (cnt >= MAX_SUBS_PER_USER) {
+    throw new Error(`每人最多订阅 ${MAX_SUBS_PER_USER} 个关键词`);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    db.prepare("INSERT INTO subscriptions (user_email, notify_email, keyword, created_at) VALUES (?, ?, ?, ?)")
+      .run(email, notifyEmail, keyword, now);
+  } catch (e) {
+    if (String(e.message).includes("UNIQUE")) throw new Error("该关键词已订阅");
+    throw e;
+  }
+  return { success: true, max: MAX_SUBS_PER_USER };
+}
+
+function handleSubscribeRemove(body, req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  const id = parseInt(body.id, 10);
+  if (!id) throw new Error("无效的订阅 ID");
+  db.prepare("DELETE FROM subscriptions WHERE id = ? AND user_email = ?").run(id, email);
+  // 清理该订阅的已发送记录（已无意义）
+  try { db.prepare("DELETE FROM subscription_sent WHERE sub_id = ?").run(id); } catch (e) {}
+  return { success: true };
+}
+
+function handleSubscribeUnsubscribe(query) {
+  // 公开接口（邮件内一键退订，无需登录）
+  const subId = verifyUnsubToken(query.token);
+  if (!subId) throw new Error("退订链接无效或已过期");
+  const row = queryOne("SELECT user_email, keyword FROM subscriptions WHERE id = ?", [subId]);
+  if (!row) return { success: true, already: true };
+  db.prepare("DELETE FROM subscriptions WHERE id = ?").run(subId);
+  try { db.prepare("DELETE FROM subscription_sent WHERE sub_id = ?").run(subId); } catch (e) {}
+  console.log(`[subscribe] 用户 ${row.user_email} 一键退订关键词「${row.keyword}」`);
+  return { success: true, keyword: row.keyword };
+}
+
+function handleSubscribeUnsubscribeAll(query) {
+  // 公开接口（邮件内一键退订全部，无需登录）
+  const email = verifyUnsubUserToken(query.token);
+  if (!email) throw new Error("退订链接无效或已过期");
+  const rows = queryAll("SELECT id, keyword FROM subscriptions WHERE user_email = ?", [email]);
+  if (rows.length === 0) return { success: true, already: true };
+  const ids = rows.map(r => r.id);
+  db.prepare("DELETE FROM subscriptions WHERE user_email = ?").run(email);
+  try {
+    const placeholders = ids.map(() => "?").join(",");
+    db.prepare(`DELETE FROM subscription_sent WHERE sub_id IN (${placeholders})`).run(...ids);
+  } catch (e) {}
+  console.log(`[subscribe] 用户 ${email} 一键退订全部 ${rows.length} 个关键词`);
+  return { success: true, count: rows.length };
+}
+
+// 扫描新帖并推送摘要邮件
+async function scanAndNotify() {
+  if (!db) return;
+  try {
+    const meta = queryOne("SELECT value FROM sub_meta WHERE key = 'last_scan_pid'");
+    let lastPid;
+    if (!meta) {
+      // 首次启动：水位线设为当前最大 pid，不补推历史
+      const maxRow = queryOne("SELECT MAX(pid) as m FROM holes");
+      lastPid = (maxRow && maxRow.m) ? maxRow.m : 0;
+      db.prepare("INSERT OR REPLACE INTO sub_meta (key, value) VALUES ('last_scan_pid', ?)").run(String(lastPid));
+      console.log(`[subscribe] 首次启动，水位线设为 pid=${lastPid}（不补推历史）`);
+      return;
+    }
+    lastPid = parseInt(meta.value, 10) || 0;
+
+    const newPosts = queryAll(
+      "SELECT pid, text, timestamp, likenum, reply FROM holes WHERE pid > ? ORDER BY pid ASC",
+      [lastPid]
+    );
+    if (newPosts.length === 0) return;
+
+    const subs = queryAll("SELECT id, user_email, notify_email, keyword FROM subscriptions");
+    const maxPid = newPosts[newPosts.length - 1].pid;
+
+    if (subs.length === 0) {
+      db.prepare("UPDATE sub_meta SET value = ? WHERE key = 'last_scan_pid'").run(String(maxPid));
+      return;
+    }
+
+    // 今日每用户发送计数（防异常）
+    const dayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+    const now = Math.floor(Date.now() / 1000);
+    const insertSent = db.prepare("INSERT OR IGNORE INTO subscription_sent (sub_id, pid, sent_at) VALUES (?, ?, ?)");
+
+    // user_email -> { notifyEmail, posts: Map(pid -> {post, keywords:[]}) }
+    const userMap = new Map();
+
+    for (const post of newPosts) {
+      const text = post.text || "";
+      for (const sub of subs) {
+        if (!sub.keyword) continue;
+        if (!text.includes(sub.keyword)) continue;
+        // 去重：已推送过的 (sub_id, pid) 跳过
+        const already = queryOne("SELECT 1 FROM subscription_sent WHERE sub_id = ? AND pid = ?", [sub.id, post.pid]);
+        if (already) continue;
+        // 记录为已发送（先记录，防重复推送；罕见 SMTP 失败可能漏推，可接受）
+        insertSent.run(sub.id, post.pid, now);
+        if (!userMap.has(sub.user_email)) {
+          userMap.set(sub.user_email, { notifyEmail: sub.notify_email, posts: new Map(), count: 0 });
+        }
+        const u = userMap.get(sub.user_email);
+        u.count++;
+        if (!u.posts.has(post.pid)) {
+          u.posts.set(post.pid, { pid: post.pid, text: post.text, timestamp: post.timestamp, likenum: post.likenum, reply: post.reply, keywords: [] });
+        }
+        u.posts.get(post.pid).keywords.push(sub.keyword);
+      }
+    }
+
+    // 推进水位线
+    db.prepare("UPDATE sub_meta SET value = ? WHERE key = 'last_scan_pid'").run(String(maxPid));
+
+    if (userMap.size === 0) return;
+
+    // 每用户发送一封摘要
+    for (const [userEmail, data] of userMap) {
+      // 每日上限检查
+      const sentToday = queryOne(
+        "SELECT COUNT(*) as c FROM subscription_sent WHERE sub_id IN (SELECT id FROM subscriptions WHERE user_email = ?) AND sent_at >= ?",
+        [userEmail, dayStart]
+      );
+      const todayCount = sentToday ? sentToday.c : 0;
+      if (todayCount > SUB_DAILY_CAP * SUB_DIGEST_MAX_POSTS) {
+        console.log(`[subscribe] 用户 ${userEmail} 今日已达上限，跳过推送`);
+        continue;
+      }
+      const posts = Array.from(data.posts.values());
+      if (posts.length === 0) continue;
+      try {
+        await sendSubscriptionDigest(data.notifyEmail, userEmail, posts);
+        console.log(`[subscribe] 已向 ${data.notifyEmail} 推送 ${posts.length} 条匹配帖（用户 ${userEmail}）`);
+      } catch (e) {
+        console.error(`[subscribe] 推送失败 ${data.notifyEmail}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.error(`[subscribe] 扫描异常: ${e.message}`);
+  }
+}
+
+async function sendSubscriptionDigest(toEmail, userEmail, posts) {
+  const overflow = posts.length > SUB_DIGEST_MAX_POSTS;
+  const showPosts = posts.slice(0, SUB_DIGEST_MAX_POSTS);
+  const items = showPosts.map(p => {
+    const time = p.timestamp ? new Date(p.timestamp * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+    const summary = (p.text || "").slice(0, 120).replace(/\s+/g, " ");
+    const kws = [...new Set(p.keywords)].map(k => `<span style="display:inline-block;background:#FFF0F0;color:#B87878;padding:1px 8px;border-radius:10px;font-size:11px;margin-right:4px;">${esc(k)}</span>`).join("");
+    return `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #E8E8ED;">
+        <div style="margin-bottom:4px;">${kws}</div>
+        <div style="color:#1D1D1F;font-size:13px;line-height:1.6;">${esc(summary)}${p.text && p.text.length > 120 ? "…" : ""}</div>
+        <div style="color:#86868B;font-size:11px;margin-top:4px;">#${p.pid} · ${esc(time)} · ♥ ${p.likenum || 0} · 💬 ${p.reply || 0}</div>
+      </td>
+    </tr>`;
+  }).join("");
+  const more = overflow ? `<p style="color:#86868B;font-size:12px;text-align:center;margin-top:12px;">还有 ${posts.length - SUB_DIGEST_MAX_POSTS} 条匹配，请前往网站查看</p>` : "";
+  // 页脚链接：仅当配置了 PUBLIC_BASE_URL 时生成可点击链接
+  const siteLink = PUBLIC_BASE_URL
+    ? `<a href="${PUBLIC_BASE_URL}/" style="color:#86868B;">前往 AutoTreehole</a>`
+    : `<span style="color:#86868B;">前往 AutoTreehole</span>`;
+  const unsubLink = PUBLIC_BASE_URL
+    ? `<a href="${PUBLIC_BASE_URL}/api/subscribe/unsubscribe-all?token=${unsubUserToken(userEmail)}" style="color:#86868B;">一键退订全部</a>`
+    : `<span style="color:#86868B;">在网站订阅页可退订</span>`;
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
+    <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:6px;">关键词订阅推送</h2>
+    <p style="color:#86868B;font-size:12px;margin-bottom:20px;">发现 ${posts.length} 条匹配你订阅关键词的新帖</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;padding:4px 20px;">
+      ${items}
+    </table>
+    ${more}
+    <p style="color:#86868B;font-size:11px;margin-top:20px;text-align:center;">
+      ${siteLink}
+      &nbsp;·&nbsp;
+      ${unsubLink}
+    </p>
+  </div>`;
+  await getMailer().sendMail({
+    from: MAIL_FROM,
+    to: toEmail,
+    subject: `关键词订阅 · ${posts.length} 条新帖匹配`,
+    html,
+  });
+}
+
+
 // ==================== 数据后台统计 API ====================
 function handleAdminStats() {
   const totalUsers = queryOne("SELECT COUNT(*) as c FROM users").c;
@@ -1325,6 +1633,18 @@ function handleAdminStats() {
     [Math.floor(Date.now() / 1000) - 30 * 86400]
   );
 
+  // 订阅统计
+  const totalSubs = queryOne("SELECT COUNT(*) as c FROM subscriptions").c;
+  const subUsers = queryOne("SELECT COUNT(DISTINCT user_email) as c FROM subscriptions").c;
+  const topKeywords = queryAll(
+    `SELECT keyword, COUNT(*) as cnt FROM subscriptions GROUP BY keyword ORDER BY cnt DESC LIMIT 20`
+  );
+  const totalSubSent = queryOne("SELECT COUNT(*) as c FROM subscription_sent").c;
+  const subSentToday = queryOne(
+    "SELECT COUNT(*) as c FROM subscription_sent WHERE sent_at >= ?",
+    [Math.floor(new Date().setHours(0, 0, 0, 0) / 1000)]
+  ).c;
+
   return {
     overview: { totalUsers, newToday, activeToday, totalViews, viewsToday },
     growth: growthSeries,
@@ -1388,6 +1708,13 @@ function handleAdminStats() {
         day: t.day,
         favs: t.favs,
       })),
+    },
+    subscriptions: {
+      total: totalSubs,
+      users: subUsers,
+      sentTotal: totalSubSent,
+      sentToday: subSentToday,
+      topKeywords: topKeywords.map(k => ({ keyword: k.keyword, count: k.cnt })),
     },
   };
 }
@@ -1581,6 +1908,49 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { sendError(res, 400, e.message); }
       return;
     }
+    // 关键词订阅：list / add / remove（需登录）
+    if (route === "subscribe/list") {
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleSubscribeList(req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "subscribe/add") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleSubscribeAdd(body, req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "subscribe/remove") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleSubscribeRemove(body, req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    // 邮件内一键退订（公开接口，返回 HTML 确认页）
+    if (route === "subscribe/unsubscribe") {
+      await ensureDb();
+      try {
+        const result = handleSubscribeUnsubscribe(query);
+        sendUnsubHtml(res, result.already ? "该订阅已不存在" : `已退订关键词「${esc(result.keyword || "")}」`);
+      } catch (e) { sendUnsubHtml(res, "退订失败：" + esc(e.message)); }
+      return;
+    }
+    if (route === "subscribe/unsubscribe-all") {
+      await ensureDb();
+      try {
+        const result = handleSubscribeUnsubscribeAll(query);
+        sendUnsubHtml(res, result.already ? "你没有任何订阅" : `已一键退订全部 ${result.count} 个关键词`);
+      } catch (e) { sendUnsubHtml(res, "退订失败：" + esc(e.message)); }
+      return;
+    }
 
     // 数据后台接口（需要管理员密码）
     if (route === "admin/stats") {
@@ -1724,6 +2094,11 @@ async function checkTokenAndWarn() {
 // 启动后 30 秒检查一次，之后每 6 小时检查一次
 setTimeout(checkTokenAndWarn, 30_000);
 setInterval(checkTokenAndWarn, 6 * 3600_000);
+
+// ==================== 关键词订阅扫描定时器 ====================
+// 启动后 60 秒首次扫描（首次仅设水位线不补推），之后每 2 分钟扫描一次
+setTimeout(() => { ensureDb().then(scanAndNotify).catch(e => console.error("[subscribe] 启动扫描失败:", e.message)); }, 60_000);
+setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscribe] 定时扫描异常:", e.message); } }, SUB_SCAN_INTERVAL_MS);
 
 // HTTP 服务器入口：监听指定端口
 server.listen(PORT, () => { console.log(`[treehole-api] 服务启动，监听端口 ${PORT}`); });

@@ -724,6 +724,65 @@ mark{
 .fav-btn.is-fav{color:#B87878}
 .fav-btn.is-fav svg{fill:#B87878;stroke:#B87878}
 .fav-btn:not(.is-fav) svg{fill:none;stroke:currentColor}
+/* 订阅推送面板 */
+.sub-add-wrap{
+  display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;
+  margin-bottom:28px;
+}
+.sub-add-wrap .sub-field{flex:1;min-width:200px}
+.sub-add-wrap .sub-field label{
+  display:block;font-size:12px;color:var(--fg-secondary);
+  margin-bottom:6px;font-weight:400;
+}
+.sub-input{
+  width:100%;background:var(--bg);
+  border:1px solid var(--divider);border-radius:var(--radius-sm);
+  padding:10px 12px;font-size:14px;color:var(--fg);
+  outline:none;transition:border-color .2s,box-shadow .2s;
+  font-family:var(--font-sans);
+}
+.sub-input:focus{border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(0,113,227,0.12)}
+.sub-add-btn{
+  padding:10px 20px;border-radius:var(--radius-sm);
+  background:var(--accent);color:#fff;border:none;
+  font-size:14px;font-weight:500;cursor:pointer;
+  transition:opacity .2s;font-family:var(--font-sans);
+  white-space:nowrap;
+}
+.sub-add-btn:hover{opacity:0.88}
+.sub-add-btn:disabled{opacity:0.4;cursor:not-allowed}
+.sub-list{display:flex;flex-direction:column;gap:0}
+.sub-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 0;border-bottom:1px solid var(--divider-subtle);
+}
+.sub-item:last-child{border-bottom:none}
+.sub-item-kw{
+  font-size:15px;font-weight:500;color:var(--fg);
+}
+.sub-item-meta{font-size:12px;color:var(--fg-secondary);margin-top:3px;font-weight:300}
+.sub-remove-btn{
+  font-size:13px;color:var(--fg-secondary);background:none;border:none;
+  cursor:pointer;padding:6px 12px;border-radius:var(--radius-sm);
+  transition:color .2s,background .2s;font-family:var(--font-sans);
+}
+.sub-remove-btn:hover{color:#FF3B30;background:var(--bg-hover)}
+.sub-empty{text-align:center;padding:60px 24px;color:var(--fg-secondary);font-weight:300;font-size:14px}
+.sub-note{
+  font-size:12px;color:var(--fg-secondary);line-height:1.7;
+  font-weight:300;padding:16px 20px;background:var(--bg);
+  border-radius:var(--radius-sm);margin-bottom:24px;
+}
+/* 轻量 Toast */
+.toast{
+  position:fixed;left:50%;bottom:80px;transform:translateX(-50%) translateY(20px);
+  background:rgba(29,29,31,0.92);color:#fff;padding:11px 22px;border-radius:20px;
+  font-size:13px;font-weight:400;font-family:var(--font-sans);
+  opacity:0;transition:opacity .25s,transform .25s;z-index:10000;pointer-events:none;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 4px 20px rgba(0,0,0,0.15);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .detail-post .detail-title{
   font-size:12px;color:var(--fg-secondary);
   font-weight:400;letter-spacing:0.06em;
@@ -1545,6 +1604,7 @@ mark{
       <button class="tab-btn" data-panel="hot">热帖</button>
       <button class="tab-btn" data-panel="report">AI报告</button>
       <button class="tab-btn" data-panel="favorites">我的收藏</button>
+      <button class="tab-btn" data-panel="subscribe">订阅推送</button>
       <button class="tab-btn" data-panel="detail">详情</button>
       <button class="tab-btn" data-panel="about">关于</button>
     </nav>
@@ -1714,6 +1774,25 @@ mark{
       </div>
     </div>
     <div id="favoritesList">
+      <div style="text-align:center;padding:48px 24px;color:var(--fg-secondary)">
+        <span class="spinner spinner-lg"></span>
+        <div style="margin-top:12px;font-size:14px;font-weight:300">加载中…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 订阅推送 ========== -->
+  <section class="panel" id="panel-subscribe">
+    <div class="section-head">
+      <div>
+        <div class="section-title">关键词订阅</div>
+        <div class="section-sub">订阅关心的关键词，爬虫发现新匹配帖时自动发邮件提醒你</div>
+      </div>
+    </div>
+    <div class="sub-note">
+      每人最多订阅 3 个关键词。系统每 2 分钟扫描一次新帖，匹配后合并成摘要邮件发送到你的收信邮箱。可随时在此退订，或点击邮件底部的"一键退订全部"。
+    </div>
+    <div id="subscribeContent">
       <div style="text-align:center;padding:48px 24px;color:var(--fg-secondary)">
         <span class="spinner spinner-lg"></span>
         <div style="margin-top:12px;font-size:14px;font-weight:300">加载中…</div>
@@ -2204,6 +2283,9 @@ function switchPanel(name){
   }
   if(name === 'favorites'){
     loadFavorites();
+  }
+  if(name === 'subscribe'){
+    loadSubscriptions();
   }
   if(name === 'detail'){
     // 直接通过 Tab 进入详情，清除返回来源、隐藏返回按钮
@@ -3149,6 +3231,108 @@ function renderFavorites(items){
       document.getElementById('detailBackBtn').style.display = 'flex';
     });
   });
+}
+
+/* ==================== 关键词订阅 ==================== */
+let toastTimer = null;
+function toast(msg){
+  let el = document.getElementById('globalToast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'globalToast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+let subState = { max: 3, isInvite: false, list: [] };
+
+async function loadSubscriptions(){
+  const wrap = document.getElementById('subscribeContent');
+  if(!wrap) return;
+  try{
+    const data = await api('/subscribe/list');
+    subState = { max: data.max || 3, isInvite: !!data.isInvite, list: data.subscriptions || [] };
+    renderSubscriptions();
+  }catch(e){
+    wrap.innerHTML = `<div class="sub-empty">${esc(e.message || '加载失败')}<div style="font-size:12px;margin-top:8px;color:var(--fg-tertiary)">登录后即可使用订阅功能</div></div>`;
+  }
+}
+
+function renderSubscriptions(){
+  const wrap = document.getElementById('subscribeContent');
+  if(!wrap) return;
+  const remaining = subState.max - subState.list.length;
+  const notifyField = subState.isInvite ? `
+    <div class="sub-field" style="flex-basis:100%">
+      <label>收信邮箱（邀请码用户必填）</label>
+      <input type="email" id="subNotifyEmail" class="sub-input" placeholder="用于接收推送邮件的邮箱" maxlength="100">
+    </div>` : '';
+  const addHtml = remaining > 0 ? `
+    <div class="sub-add-wrap">
+      ${notifyField}
+      <div class="sub-field">
+        <label>关键词${subState.isInvite?'':'（推送至你的注册邮箱）'}</label>
+        <input type="text" id="subKeywordInput" class="sub-input" placeholder="如：选课、租房、羽毛球" maxlength="30">
+      </div>
+      <button class="sub-add-btn" id="subAddBtn">添加订阅</button>
+    </div>` : `<div class="sub-note" style="margin-bottom:24px">已达订阅上限（${subState.max} 个），删除现有订阅后可重新添加。</div>`;
+
+  let listHtml;
+  if(subState.list.length === 0){
+    listHtml = `<div class="sub-empty">还没有订阅任何关键词<div style="font-size:12px;margin-top:8px;color:var(--fg-tertiary)">添加后，新帖匹配时将自动邮件提醒你</div></div>`;
+  }else{
+    listHtml = `<div class="sub-list">${subState.list.map(s => `
+      <div class="sub-item">
+        <div>
+          <div class="sub-item-kw">${esc(s.keyword)}</div>
+          <div class="sub-item-meta">推送至 ${esc(s.notify_email)} · 订阅于 ${fmtTime(s.created_at)}</div>
+        </div>
+        <button class="sub-remove-btn" data-id="${esc(s.id)}">退订</button>
+      </div>`).join('')}</div>`;
+  }
+
+  wrap.innerHTML = addHtml + listHtml;
+
+  const addBtn = document.getElementById('subAddBtn');
+  if(addBtn) addBtn.addEventListener('click', addSubscription);
+  wrap.querySelectorAll('.sub-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => removeSubscription(parseInt(btn.dataset.id, 10)));
+  });
+}
+
+async function addSubscription(){
+  const kwInput = document.getElementById('subKeywordInput');
+  const notifyInput = document.getElementById('subNotifyEmail');
+  const btn = document.getElementById('subAddBtn');
+  if(!kwInput) return;
+  const keyword = kwInput.value.trim();
+  if(!keyword){ toast('请输入关键词'); return; }
+  const body = { keyword };
+  if(notifyInput) body.notifyEmail = notifyInput.value.trim();
+  if(btn){ btn.disabled = true; btn.textContent = '添加中…'; }
+  try{
+    await api('/subscribe/add', { method:'POST', body });
+    toast('订阅成功');
+    await loadSubscriptions();
+  }catch(e){
+    toast(e.message || '订阅失败');
+    if(btn){ btn.disabled = false; btn.textContent = '添加订阅'; }
+  }
+}
+
+async function removeSubscription(id){
+  if(!id) return;
+  try{
+    await api('/subscribe/remove', { method:'POST', body:{ id } });
+    toast('已退订');
+    await loadSubscriptions();
+  }catch(e){
+    toast(e.message || '退订失败');
+  }
 }
 
 /* ==================== Token 过期检测 ==================== */
