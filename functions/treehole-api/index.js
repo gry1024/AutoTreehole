@@ -2105,4 +2105,5 @@ setTimeout(() => { try { ensureDb(); scanAndNotify(); } catch (e) { console.erro
 setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscribe] 定时扫描异常:", e.message); } }, SUB_SCAN_INTERVAL_MS);
 
 // HTTP 服务器入口：监听指定端口
-server.listen(PORT, () => { console.log(`[treehole-api] 服务启动，监听端口 ${PORT}`); });
+// 仅监听 127.0.0.1，公网通过 Nginx 反代访问，禁止绕过 Nginx 直连 9000
+server.listen(PORT, "127.0.0.1", () => { console.log(`[treehole-api] 服务启动，监听 127.0.0.1:${PORT}`); });
