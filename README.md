@@ -51,47 +51,137 @@
 
 本仓库仅提供用于学习与复现的代码，不含任何运行中的数据或凭证。
 
-### 1. 克隆与配置
+### 方式一：交给 Coding Agent 重建（最简单）
+
+> 把本仓库地址丢给你的 AI 编程助手（如 Trae / Cursor / Claude Code），说一句：
+>
+> **"Clone https://github.com/gry1024/AutoTreehole ，阅读 README.md 与 TECH.md，在本机从零把这个网站跑起来。"**
+>
+> Agent 会自动完成下方"方式二"的全部步骤：装依赖、配 `.env`、起后端、起爬虫、起前端，并在浏览器里打开页面。你只需按它提示填入树洞凭证与邮箱配置即可。
+
+### 方式二：手动逐步运行
+
+#### 环境准备
+
+| 工具 | 版本要求 | 用途 |
+|------|----------|------|
+| Node.js | ≥ 18 | 后端 API |
+| Python | ≥ 3.8 | 爬虫 |
+| Git | 任意 | 克隆仓库 |
+
+#### 1. 克隆仓库并配置环境变量
 
 ```bash
 git clone https://github.com/gry1024/AutoTreehole.git
 cd AutoTreehole
 cp .env.example .env
-# 编辑 .env，填入你自己的凭证（见下方说明）
 ```
 
-### 2. 启动爬虫
+编辑 `.env`，至少填入以下几项（其余可按需补）：
+
+```ini
+# 树洞登录凭证（获取方式见下方"关于树洞凭证"）
+PKU_TOKEN=你的_pku_token
+PKU_UUID=你的_uuid
+
+# 用户登录令牌签名密钥（随意一串长随机字符，务必修改）
+TOKEN_SECRET=随便改成一串随机字符串
+
+# 数据后台密码（admin.html 登录用）
+ADMIN_PASSWORD=改成你自己的密码
+
+# 邮件服务（QQ 邮箱 SMTP，用于邮箱验证码与留言转发）
+MAIL_USER=你的@qq.com
+MAIL_PASS=你的SMTP授权码
+
+# 站长收件邮箱（用户留言会转发到这里）
+SITE_OWNER_EMAIL=你的邮箱
+
+# 站点地址（订阅邮件内链接用，本地可留空）
+PUBLIC_BASE_URL=
+
+# 可选：服务器默认 LLM Key（不填则 AI 报告的 Public 模式不可用，直连/代理模式仍可用）
+MINIMAX_API_KEY=
+```
+
+> **`.env` 已被 `.gitignore` 忽略，永远不会被提交，请放心填入真实凭证。**
+
+#### 2. 启动后端 API
+
+```bash
+cd functions/treehole-api
+npm install
+node index.js
+```
+
+看到 `[treehole-api] 服务启动，监听 127.0.0.1:9000` 即成功。后端会自动创建 `treehole.db` 与所需数据表。
+
+#### 3. 启动爬虫（采集数据）
+
+新开一个终端：
 
 ```bash
 pip install requests
 python crawler.py
 ```
 
-### 3. 启动后端
+爬虫会以 `MAX(pid)` 为高水位线增量采集帖子与评论，写入 `treehole.db`。首次运行约几秒后开始有数据，之后 7×24 持续运行。
 
-```bash
-cd functions/treehole-api
-npm install
-node index.js   # 默认监听 :9000
-```
+> 没有树洞凭证也能启动后端与前端，只是数据库为空；凭证填好后爬虫才会写入真实数据。
 
-### 4. 启动前端
+#### 4. 启动前端
+
+前端是纯静态文件，任意静态服务器即可。新开一个终端：
 
 ```bash
 npx http-server frontend -p 8080
-# 浏览器访问 http://localhost:8080
 ```
 
-本地调试时，可将 `frontend/index.html` 中的 `API_BASE` 改为 `http://localhost:9000/api`。
+浏览器打开 `http://localhost:8080` 即可访问。
+
+#### 5. 本地调试的接口对接说明
+
+前端默认 `API_BASE = location.origin + '/api'`，即与页面同源。本地分端口运行时（前端 8080、后端 9000）有两种对接方式：
+
+**A. 仅浏览数据（无需登录功能）**
+
+把 `frontend/index.html` 里的：
+
+```javascript
+const API_BASE = location.origin + '/api';
+```
+
+改为：
+
+```javascript
+const API_BASE = 'http://localhost:9000/api';
+```
+
+查询、搜索、详情、AI 报告等接口即可正常调用（后端已开 CORS）。
+
+**B. 完整功能（含邮箱登录、收藏、订阅，需同源 Cookie）**
+
+登录令牌通过 HttpOnly Cookie 传递，需前后端同源。本地推荐用 Nginx 反代（与生产环境一致）：
+
+```nginx
+server {
+    listen 8080;
+    root /path/to/AutoTreehole/frontend;   # 改成你的 frontend 绝对路径
+    location / { try_files $uri /index.html; }
+    location /api/ { proxy_pass http://127.0.0.1:9000; }
+}
+```
+
+这样 `http://localhost:8080` 同时托管前端与代理后端，Cookie 同源，全部功能可用。
 
 ### 关于树洞凭证
 
-树洞强制 CAS + 短信验证，无法自动登录。爬虫依赖浏览器登录后获取的两个凭证（约 30 天有效期）：
+树洞强制 CAS + 短信验证，无法自动登录。爬虫使用浏览器登录后获取的两个凭证直连 API（约 30 天有效期）：
 
 | 变量 | 获取方式 |
 |------|----------|
-| `PKU_TOKEN` | 登录树洞 → F12 → Application → Cookies → `pku_token` |
-| `PKU_UUID`  | F12 → Network → 任一请求头 → `uuid` |
+| `PKU_TOKEN` | 登录 `treehole.pku.edu.cn` → F12 → Application → Cookies → `pku_token` |
+| `PKU_UUID`  | F12 → Network → 任一请求 → Request Headers → `uuid` |
 
 填入 `.env` 即可，过期后重新获取。
 

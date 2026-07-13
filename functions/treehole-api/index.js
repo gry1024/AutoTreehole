@@ -1020,6 +1020,11 @@ async function handleMessage(body, req) {
   const token = getCookie(req, "treehole_token");
   const payload = verifyToken(token);
   if (!payload) throw new Error("请先登录");
+  const ip = getClientIp(req);
+  // 复用未登录留言的三层限流（IP 小时级 / 日级 / 全局小时级），防止登录用户轰炸站长邮箱
+  if (!messageRateCheck(ip)) {
+    throw new Error("留言过于频繁，请稍后再试");
+  }
   const content = (body.content || "").trim();
   if (!content) throw new Error("留言内容不能为空");
   if (content.length > 5000) throw new Error("留言内容过长（限 5000 字）");
@@ -1832,6 +1837,13 @@ const server = http.createServer(async (req, res) => {
       try {
         sendJson(res, 200, handleAuthPledge(req));
       } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "auth/logout") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      // 清除 HttpOnly Cookie，使前端令牌立即失效
+      res.setHeader("Set-Cookie", "treehole_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax");
+      sendJson(res, 200, { success: true });
       return;
     }
     if (route === "auth/invite") {

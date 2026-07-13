@@ -1294,15 +1294,27 @@ mark{
   font-size:14px;color:var(--fg-secondary);
   line-height:1.8;margin-bottom:28px;
 }
+.pledge-card .pledge-btns{
+  display:flex;gap:12px;justify-content:center;flex-wrap:wrap;
+}
 .pledge-card .pledge-btn{
-  display:inline-block;padding:10px 32px;
+  display:inline-block;padding:10px 28px;
   border-radius:var(--radius-sm);
   font-size:14px;font-weight:500;
-  background:var(--accent);color:#fff;border:none;
-  cursor:pointer;transition:background .2s;
+  cursor:pointer;transition:background .2s,border-color .2s;
   font-family:var(--font-sans);
 }
-.pledge-card .pledge-btn:hover{background:#000}
+.pledge-card .pledge-btn-primary{
+  background:var(--accent);color:#fff;border:none;
+}
+.pledge-card .pledge-btn-primary:hover{background:#000}
+.pledge-card .pledge-btn-secondary{
+  background:transparent;color:var(--fg-secondary);
+  border:1px solid var(--border);
+}
+.pledge-card .pledge-btn-secondary:hover{
+  background:#f0f0f2;color:var(--fg);
+}
 
 /* ==================== 站长信箱弹窗（未登录可用） ==================== */
 .msg-overlay{
@@ -1541,7 +1553,10 @@ mark{
     </div>
     <h2>欢迎来到 AutoTreehole</h2>
     <p class="pledge-text">BIG BROTHER IS WATCHING.<br>为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。每一位用户的默契，是本站继续服务大家的基石。</p>
-    <button class="pledge-btn" id="pledgeBtn">我承诺</button>
+    <div class="pledge-btns">
+      <button class="pledge-btn pledge-btn-primary" id="pledgeBtn">Yes, I agree</button>
+      <button class="pledge-btn pledge-btn-secondary" id="pledgeDeclineBtn">No, thanks</button>
+    </div>
   </div>
 </div>
 
@@ -1974,6 +1989,15 @@ async function acceptPledge(){
   }
 }
 
+// 不同意承诺：登出并返回验证入口，不进入网页
+async function rejectPledge(){
+  try{ await api('/auth/logout', {method:'POST', body:{}}); }catch(e){ /* ignore */ }
+  authAuthorized = false;
+  authEmail = '';
+  document.getElementById('pledgeOverlay').classList.add('hidden');
+  document.getElementById('authOverlay').classList.remove('hidden');
+}
+
 function authSetError(step, msg){
   const el = document.getElementById('authError' + step);
   if(el) el.textContent = msg || '';
@@ -2036,6 +2060,7 @@ document.getElementById('authResend').addEventListener('click', () => {
 document.getElementById('authCode').addEventListener('keydown', e => { if(e.key==='Enter') authVerifyCode(); });
 document.getElementById('authEmail').addEventListener('keydown', e => { if(e.key==='Enter') authSendCode(); });
 document.getElementById('pledgeBtn').addEventListener('click', acceptPledge);
+document.getElementById('pledgeDeclineBtn').addEventListener('click', rejectPledge);
 
 /* ==================== 邀请码登录 ==================== */
 async function inviteLogin(){
@@ -3267,9 +3292,10 @@ function renderSubscriptions(){
     <div class="sub-add-wrap">
       ${notifyField}
       <div class="sub-field">
-        <label>关键词${subState.isInvite?'':'（推送至你的注册邮箱）'}</label>
+        <label>关键词</label>
         <input type="text" id="subKeywordInput" class="sub-input" placeholder="如xk/羽毛球场/llm" maxlength="30">
       </div>
+      <div class="sub-note" style="margin-bottom:16px">发现含有关键词的新洞将立即推送邮件提醒，最多订阅 ${subState.max} 个关键词</div>
       <button class="sub-add-btn" id="subAddBtn">添加订阅</button>
     </div>` : `<div class="sub-note" style="margin-bottom:24px">已达订阅上限（${subState.max} 个），删除现有订阅后可重新添加。</div>`;
 
