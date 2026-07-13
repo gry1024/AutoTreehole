@@ -43,10 +43,10 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const SITE_OWNER_EMAIL = process.env.SITE_OWNER_EMAIL || "";
 // 站点公开地址（用于邮件内链接，如 https://autoth.example.com）
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-// 留言频率限制（防邮箱轰炸）
-const MESSAGE_IP_HOURLY_LIMIT = 2;   // 每 IP 每小时最多 2 条
-const MESSAGE_IP_DAILY_LIMIT = 3;    // 每 IP 每天最多 3 条
-const MESSAGE_GLOBAL_HOURLY_LIMIT = 10; // 全局每小时最多 10 条
+// 留言频率限制（防邮箱轰炸，但不过严以免误伤正常用户）
+const MESSAGE_IP_HOURLY_LIMIT = 3;   // 每 IP 每小时最多 3 条
+const MESSAGE_IP_DAILY_LIMIT = 8;    // 每 IP 每天最多 8 条
+const MESSAGE_GLOBAL_HOURLY_LIMIT = 50; // 全局每小时最多 50 条（避免大批正常用户同时留言被误限）
 
 // 频率限制：每 IP 每分钟最多 30 次普通请求、2 次报告请求
 const RATE_LIMIT_NORMAL = 30;
@@ -186,6 +186,89 @@ setInterval(() => {
     }
   }
 }, RATE_WINDOW_MS);
+
+// ==================== 安全告警系统 ====================
+// 任何报错/超频/攻击/服务失败/可疑用户事件 → 入库 alert_logs + 邮件通知站长
+// 节流：同 type 事件 ALERT_THROTTLE_MS 内只发一封邮件（但每次都入库，保证日志完整）
+const ALERT_THROTTLE_MS = 10 * 60_000; // 10 分钟
+const alertLastNotify = new Map(); // type -> 上次发邮件时间戳
+
+// 告警级别 → 邮件主题前缀 + emoji
+const ALERT_LEVEL_META = {
+  info:    { tag: "[告警-信息]", emoji: "ℹ️" },
+  warn:    { tag: "[告警-警告]", emoji: "⚠️" },
+  error:   { tag: "[告警-严重]", emoji: "🚨" },
+};
+
+/**
+ * 记录安全告警：入库 + 邮件通知（带节流）
+ * @param {string} level   - info / warn / error
+ * @param {string} type    - rate_limit / ssrf / brute_force / server_error / suspicious / token_warn
+ * @param {string} subject - 一句话概述
+ * @param {string} detail  - 详细信息（可选）
+ * @param {string} ip      - 来源 IP（可选）
+ */
+function alertAdmin(level, type, subject, detail = "", ip = "") {
+  const now = Date.now();
+  const ts = new Date(now).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  // 1) 入库（每次都记，保证日志完整）
+  let notified = 0;
+  try {
+    if (db) {
+      db.prepare(
+        "INSERT INTO alert_logs (level, type, subject, detail, ip, notified, created_at) VALUES (?,?,?,?,?,?,?)"
+      ).run(level, type, subject, detail.slice(0, 4000), ip, 0, Math.floor(now / 1000));
+    }
+  } catch (e) { /* 入库失败不阻断主流程 */ }
+
+  // 2) 节流：同 type 10 分钟内只发一封邮件
+  const last = alertLastNotify.get(type) || 0;
+  if (now - last < ALERT_THROTTLE_MS) {
+    return; // 节流期内，仅入库不发邮件
+  }
+  alertLastNotify.set(type, now);
+  notified = 1;
+  try {
+    if (db) {
+      db.prepare("UPDATE alert_logs SET notified = 1 WHERE id = last_insert_rowid()").run();
+    }
+  } catch (e) { /* ignore */ }
+
+  // 3) 发邮件
+  if (!SITE_OWNER_EMAIL || !MAIL_USER) return;
+  const meta = ALERT_LEVEL_META[level] || ALERT_LEVEL_META.warn;
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
+    <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">${meta.emoji} AutoTreehole 安全告警</h2>
+    <table style="width:100%;font-size:14px;color:#1D1D1F;line-height:1.8;margin-bottom:20px;">
+      <tr><td style="color:#86868B;width:90px;vertical-align:top;">级别</td><td><b>${level.toUpperCase()}</b></td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">类型</td><td>${type}</td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">事件</td><td>${esc(subject)}</td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">来源 IP</td><td>${esc(ip) || "未知"}</td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">时间</td><td>${ts}</td></tr>
+    </table>
+    ${detail ? `<div style="background:#fff;border-radius:8px;padding:20px 24px;"><p style="color:#1D1D1F;font-size:13px;line-height:1.8;white-space:pre-wrap;">${esc(detail)}</p></div>` : ""}
+    <p style="color:#86868B;font-size:12px;margin-top:16px;">此邮件由 AutoTreehole 告警系统自动发送 · 同类事件 10 分钟内仅通知一次，完整日志见数据后台</p>
+  </div>`;
+  getMailer().sendMail({
+    from: MAIL_FROM,
+    to: SITE_OWNER_EMAIL,
+    subject: `${meta.tag} ${subject.slice(0, 60)}`,
+    html,
+  }).then(() => {
+    console.log(`[alert] 已通知站长: [${level}] ${type} - ${subject}`);
+  }).catch(e => {
+    console.error(`[alert] 邮件发送失败: ${e.message}`);
+    alertLastNotify.delete(type); // 发送失败则重置节流，允许下次重试
+  });
+}
+
+// 定时清理节流记录，避免内存泄漏
+setInterval(() => {
+  const now = Date.now();
+  for (const [type, t] of alertLastNotify) {
+    if (now - t >= ALERT_THROTTLE_MS) alertLastNotify.delete(type);
+  }
+}, 3600_000);
 
 // ==================== 工具函数 ====================
 
@@ -386,6 +469,18 @@ function ensureDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_sub_sent_sub ON subscription_sent(sub_id);
     CREATE TABLE IF NOT EXISTS sub_meta (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE IF NOT EXISTS alert_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      level      TEXT NOT NULL,        -- info / warn / error
+      type       TEXT NOT NULL,        -- rate_limit / ssrf / brute_force / server_error / suspicious / token_warn
+      subject    TEXT NOT NULL,
+      detail     TEXT,
+      ip         TEXT,
+      notified   INTEGER DEFAULT 0,    -- 是否已发邮件（1=已发，0=节流未发）
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_alert_logs_created ON alert_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_alert_logs_type ON alert_logs(type, created_at);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -598,7 +693,12 @@ async function callLlm(system, user, provider, customConfig) {
       fmt = LLM_PROVIDERS[provider].fmt;
     }
     // 安全：阻断 SSRF —— 禁止指向内网/本地地址
-    assertSafeUrl(url);
+    try {
+      assertSafeUrl(url);
+    } catch (ssrfErr) {
+      alertAdmin("error", "ssrf", "检测到 SSRF 攻击尝试", `用户提交的 LLM URL 被安全策略拦截: ${url}\n原因: ${ssrfErr.message}`, ip);
+      throw ssrfErr;
+    }
     p = { url, model: customConfig.model, fmt, _apiKey: apiKey };
   } else {
     p = LLM_PROVIDERS[provider];
@@ -965,6 +1065,7 @@ function handleAuthVerify(body, ip) {
     throw new Error("请先发送验证码");
   }
   if (record.attempts >= CODE_MAX_ATTEMPTS) {
+    alertAdmin("warn", "brute_force", "验证码尝试次数耗尽", `邮箱: ${email}（连续 ${CODE_MAX_ATTEMPTS} 次错误，可能暴力破解）`, ip);
     throw new Error("尝试次数过多，请重新发送验证码");
   }
   if (now > record.expires_at) {
@@ -1023,6 +1124,7 @@ async function handleMessage(body, req) {
   const ip = getClientIp(req);
   // 复用未登录留言的三层限流（IP 小时级 / 日级 / 全局小时级），防止登录用户轰炸站长邮箱
   if (!messageRateCheck(ip)) {
+    alertAdmin("warn", "rate_limit", "已登录用户留言触发频率限制", `用户: ${payload.email}（疑似邮箱轰炸）`, ip);
     throw new Error("留言过于频繁，请稍后再试");
   }
   const content = (body.content || "").trim();
@@ -1066,6 +1168,7 @@ async function handlePublicMessage(body, req) {
   const source = (body.source || "").trim().slice(0, 40).replace(/[\r\n\0]/g, "");
   // 三层频率限制：IP 小时级 / IP 日级 / 全局小时级（防邮箱轰炸）
   if (!messageRateCheck(ip)) {
+    alertAdmin("warn", "rate_limit", "访客留言触发频率限制", `来源: ${source || "未标注"}（疑似邮箱轰炸）`, ip);
     throw new Error("留言过于频繁，请稍后再试");
   }
 
@@ -1105,11 +1208,15 @@ function generateInviteCode(len = 8) {
 
 // 邀请码登录
 function handleInviteLogin(body, req) {
+  const ip = getClientIp(req);
   const code = (body.code || "").trim().toUpperCase();
   if (!code) throw new Error("请输入邀请码");
   if (!/^[A-Z0-9]{4,20}$/.test(code)) throw new Error("邀请码格式无效");
   const row = queryOne("SELECT * FROM invite_codes WHERE code = ?", [code]);
-  if (!row) throw new Error("邀请码不存在");
+  if (!row) {
+    alertAdmin("warn", "brute_force", "邀请码登录失败", `尝试的邀请码: ${code}（不存在，可能暴力破解）`, ip);
+    throw new Error("邀请码不存在");
+  }
   if (row.used_at) throw new Error("邀请码已被使用");
   const now = Math.floor(Date.now() / 1000);
   const userId = `invite:${code}`;
@@ -1119,7 +1226,7 @@ function handleInviteLogin(body, req) {
   // 标记邀请码已使用
   db.prepare("UPDATE invite_codes SET used_at = ?, used_by = ? WHERE code = ?").run(now, userId, code);
   // 访问日志
-  db.prepare("INSERT INTO visit_logs (user_email, ip, entered_at) VALUES (?, ?, ?)").run(userId, getClientIp(req), now);
+  db.prepare("INSERT INTO visit_logs (user_email, ip, entered_at) VALUES (?, ?, ?)").run(userId, ip, now);
   const token = generateToken(userId);
   console.log(`[auth] 邀请码登录: ${code} → ${userId}`);
   return { token, email: userId };
@@ -1653,6 +1760,33 @@ function handleAdminStats() {
     [Math.floor(new Date().setHours(0, 0, 0, 0) / 1000)]
   ).c;
 
+  // 安全告警统计
+  const totalAlerts = queryOne("SELECT COUNT(*) as c FROM alert_logs").c;
+  const alertsToday = queryOne("SELECT COUNT(*) as c FROM alert_logs WHERE created_at >= ?", [todayStart]).c;
+  const alertsNotified = queryOne("SELECT COUNT(*) as c FROM alert_logs WHERE notified = 1").c;
+  // 按类型统计
+  const alertsByType = queryAll(
+    `SELECT type, COUNT(*) as count, SUM(notified) as notified_count
+     FROM alert_logs GROUP BY type ORDER BY count DESC`
+  );
+  // 按级别统计
+  const alertsByLevel = queryAll(
+    `SELECT level, COUNT(*) as count
+     FROM alert_logs GROUP BY level ORDER BY count DESC`
+  );
+  // 近 30 天告警趋势
+  const alertsTrend = queryAll(
+    `SELECT date(created_at, 'unixepoch', 'localtime') as day, COUNT(*) as total
+     FROM alert_logs WHERE created_at >= ?
+     GROUP BY day ORDER BY day ASC`,
+    [Math.floor(Date.now() / 1000) - 30 * 86400]
+  );
+  // 最近 100 条告警记录
+  const recentAlerts = queryAll(
+    `SELECT id, level, type, subject, detail, ip, notified, created_at
+     FROM alert_logs ORDER BY created_at DESC LIMIT 100`
+  );
+
   return {
     overview: { totalUsers, newToday, activeToday, totalViews, viewsToday },
     growth: growthSeries,
@@ -1724,6 +1858,24 @@ function handleAdminStats() {
       sentToday: subSentToday,
       topKeywords: topKeywords.map(k => ({ keyword: k.keyword, count: k.cnt })),
     },
+    alerts: {
+      total: totalAlerts,
+      today: alertsToday,
+      notified: alertsNotified,
+      byType: alertsByType.map(t => ({ type: t.type, count: t.count, notified: t.notified_count || 0 })),
+      byLevel: alertsByLevel.map(l => ({ level: l.level, count: l.count })),
+      trend: alertsTrend.map(t => ({ day: t.day, total: t.total })),
+      recent: recentAlerts.map(a => ({
+        id: a.id,
+        level: a.level,
+        type: a.type,
+        subject: a.subject,
+        detail: a.detail,
+        ip: a.ip,
+        notified: !!a.notified,
+        createdAt: a.created_at,
+      })),
+    },
   };
 }
 
@@ -1774,7 +1926,7 @@ const server = http.createServer(async (req, res) => {
     // 报告接口
     if (route === "report") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
-      if (!rateLimit(ip, true)) { sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 2 次、每天 15 次；全局每天 200 次"); return; }
+      if (!rateLimit(ip, true)) { alertAdmin("warn", "rate_limit", "AI 报告接口触发频率限制", `路由: /api/report`, ip); sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 2 次、每天 15 次；全局每天 200 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       sendJson(res, 200, await handleReport(body, ip));
@@ -2066,6 +2218,10 @@ const server = http.createServer(async (req, res) => {
     console.error("[error]", e.message);
     const status = e.message.includes("不存在") || e.message.includes("未找到") ? 404
       : e.message.includes("无效") || e.message.includes("不能为空") || e.message.includes("过长") ? 400 : 500;
+    // 500 级错误（服务失败）告警；4xx 多为用户输入问题，不告警以免刷屏
+    if (status >= 500) {
+      alertAdmin("error", "server_error", `服务内部错误: ${e.message.slice(0, 80)}`, `路由: /api/${route}\n堆栈: ${e.stack || e.message}`, ip);
+    }
     sendError(res, status, e.message);
   }
 });

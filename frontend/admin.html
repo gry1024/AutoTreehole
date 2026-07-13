@@ -270,6 +270,35 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    <!-- 安全告警 -->
+    <div class="chart-section">
+      <div class="chart-title">安全告警趋势</div>
+      <div class="chart-sub" id="alertsStats">近 30 天每日告警数</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="alertsChart"></svg></div>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">按类型 / 级别统计</div>
+      <div class="chart-sub">各类安全事件的触发次数与邮件通知数</div>
+      <table class="data-table">
+        <thead><tr><th>类型</th><th>说明</th><th>触发次数</th><th>已通知</th></tr></thead>
+        <tbody id="alertsByTypeBody"></tbody>
+      </table>
+      <table class="data-table" style="margin-top:16px">
+        <thead><tr><th>级别</th><th>次数</th></tr></thead>
+        <tbody id="alertsByLevelBody"></tbody>
+      </table>
+    </div>
+
+    <div class="table-section">
+      <div class="table-title">最近告警记录</div>
+      <div class="chart-sub">最近 100 条安全事件日志（报错 / 超频 / 攻击 / 可疑用户等）</div>
+      <table class="data-table">
+        <thead><tr><th>时间</th><th>级别</th><th>类型</th><th>事件</th><th>来源 IP</th><th>通知</th><th>详情</th></tr></thead>
+        <tbody id="recentAlertsBody"></tbody>
+      </table>
+    </div>
+
     <!-- 邀请码管理 -->
     <div class="table-section">
       <div class="table-title">邀请码管理</div>
@@ -338,6 +367,7 @@ async function loadData(){
   if(data.reports) renderReports(data.reports);
   if(data.favorites) renderFavoritesStats(data.favorites);
   if(data.subscriptions) renderSubsStats(data.subscriptions);
+  if(data.alerts) renderAlertsStats(data.alerts);
   await loadInviteList();
   return data;
 }
@@ -597,6 +627,102 @@ function renderSubsStats(r){
   }else{
     tk.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无订阅</td></tr>';
   }
+}
+
+/* ==================== 安全告警统计 ==================== */
+const ALERT_TYPE_LABELS = {
+  rate_limit: '频率限制',
+  ssrf: 'SSRF 攻击',
+  brute_force: '暴力破解',
+  server_error: '服务失败',
+  suspicious: '可疑用户',
+  token_warn: 'Token 告警',
+};
+const ALERT_LEVEL_COLOR = {
+  info: '#86868B',
+  warn: '#FF9500',
+  error: '#FF3B30',
+};
+function renderAlertsStats(r){
+  if(!r) return;
+  const statsEl = document.getElementById('alertsStats');
+  if(statsEl){
+    statsEl.textContent = `总计 ${r.total} 条告警 · 今日 ${r.today} 条 · 已邮件通知 ${r.notified} 条`;
+  }
+  // 趋势图（单色柱状，橙红）
+  drawAlertTrendChart('alertsChart', r.trend || []);
+  // 按类型
+  const tb = document.getElementById('alertsByTypeBody');
+  if(r.byType && r.byType.length){
+    tb.innerHTML = r.byType.map(t => {
+      const label = ALERT_TYPE_LABELS[t.type] || t.type;
+      return `<tr><td style="font-weight:500">${esc(t.type)}</td><td>${esc(label)}</td><td style="color:#FF3B30;font-weight:600">${t.count}</td><td>${t.notified}</td></tr>`;
+    }).join('');
+  }else{
+    tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无告警 · 一切正常</td></tr>';
+  }
+  // 按级别
+  const lb = document.getElementById('alertsByLevelBody');
+  if(r.byLevel && r.byLevel.length){
+    lb.innerHTML = r.byLevel.map(l => {
+      const color = ALERT_LEVEL_COLOR[l.level] || '#86868B';
+      const label = ({info:'信息', warn:'警告', error:'严重'})[l.level] || l.level;
+      return `<tr><td style="color:${color};font-weight:600">${esc(label)}</td><td>${l.count}</td></tr>`;
+    }).join('');
+  }else{
+    lb.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+  }
+  // 最近记录
+  const rb = document.getElementById('recentAlertsBody');
+  if(r.recent && r.recent.length){
+    rb.innerHTML = r.recent.map(a => {
+      const time = new Date(a.createdAt * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'});
+      const color = ALERT_LEVEL_COLOR[a.level] || '#86868B';
+      const typeLabel = ALERT_TYPE_LABELS[a.type] || a.type;
+      const levelLabel = ({info:'信息', warn:'警告', error:'严重'})[a.level] || a.level;
+      const notified = a.notified
+        ? '<span style="color:#34C759">已发</span>'
+        : '<span style="color:#86868B">节流</span>';
+      const detail = a.detail ? esc(a.detail.slice(0, 100)) : '<span style="color:#86868B">-</span>';
+      return `<tr><td>${esc(time)}</td><td style="color:${color};font-weight:600">${esc(levelLabel)}</td><td>${esc(typeLabel)}</td><td class="text-cell" title="${esc(a.subject||'')}">${esc(a.subject||'')}</td><td>${esc(a.ip||'-')}</td><td>${notified}</td><td class="text-cell" title="${esc(a.detail||'')}">${detail}</td></tr>`;
+    }).join('');
+  }else{
+    rb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#86868B;padding:24px">暂无告警记录 · 网站运行平稳</td></tr>';
+  }
+}
+// 告警趋势柱状图（橙红色，单值）
+function drawAlertTrendChart(svgId, dataPoints){
+  const svg = document.getElementById(svgId);
+  if(!dataPoints || dataPoints.length === 0){
+    if(svg) svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#86868B" font-size="13">暂无数据</text>';
+    return;
+  }
+  const W = 1000, H = 240, padL = 50, padR = 20, padT = 20, padB = 40;
+  const maxVal = Math.max(...dataPoints.map(d => d.total||0), 1);
+  const groupW = (W - padL - padR) / dataPoints.length;
+  const barW = Math.max(groupW * 0.6, 2);
+  let grid = '';
+  for(let i = 0; i <= 4; i++){
+    const y = padT + (H - padT - padB) * (1 - i / 4);
+    const v = Math.round(maxVal * i / 4);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E8E8ED" stroke-width="1"/>`;
+    grid += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${v}</text>`;
+  }
+  let bars = '', labels = '';
+  const labelStep = Math.max(1, Math.floor(dataPoints.length / 8));
+  dataPoints.forEach((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const v = d.total || 0;
+    const h = v / maxVal * (H - padT - padB);
+    const baseY = H - padB;
+    bars += `<rect x="${cx - barW/2}" y="${baseY - h}" width="${barW}" height="${h}" fill="#FF9500" rx="2"/>`;
+    if(i % labelStep === 0 || i === dataPoints.length - 1){
+      labels += `<text x="${cx}" y="${H - padB + 14}" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">${(d.day||'').slice(5)}</text>`;
+    }
+  });
+  svg.innerHTML = grid + bars + labels;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 }
 
 // 收藏趋势柱状图（单色）
