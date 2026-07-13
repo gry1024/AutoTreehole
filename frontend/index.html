@@ -1786,11 +1786,8 @@ mark{
     <div class="section-head">
       <div>
         <div class="section-title">关键词订阅</div>
-        <div class="section-sub">订阅关心的关键词，爬虫发现新匹配帖时自动发邮件提醒你</div>
+        <div class="section-sub">一键订阅关键词，即时邮件提醒</div>
       </div>
-    </div>
-    <div class="sub-note">
-      每人最多订阅 3 个关键词。系统每 2 分钟扫描一次新帖，匹配后合并成摘要邮件发送到你的收信邮箱。可随时在此退订，或点击邮件底部的"一键退订全部"。
     </div>
     <div id="subscribeContent">
       <div style="text-align:center;padding:48px 24px;color:var(--fg-secondary)">
@@ -3220,15 +3217,10 @@ function renderFavorites(items){
       </div>
     </div>`;
   }).join('');
-  // 点击跳转详情
+  // 点击跳转详情（复用 openDetail 以正确记录来源面板和滚动位置）
   list.querySelectorAll('.fav-card').forEach(card => {
     card.addEventListener('click', () => {
-      const pid = card.dataset.pid;
-      detailOrigin = 'favorites';
-      switchPanel('detail');
-      document.getElementById('detailPid').value = pid;
-      loadDetail(pid);
-      document.getElementById('detailBackBtn').style.display = 'flex';
+      openDetail(card.dataset.pid);
     });
   });
 }
@@ -3276,7 +3268,7 @@ function renderSubscriptions(){
       ${notifyField}
       <div class="sub-field">
         <label>关键词${subState.isInvite?'':'（推送至你的注册邮箱）'}</label>
-        <input type="text" id="subKeywordInput" class="sub-input" placeholder="如：选课、租房、羽毛球" maxlength="30">
+        <input type="text" id="subKeywordInput" class="sub-input" placeholder="如xk/羽毛球场/llm" maxlength="30">
       </div>
       <button class="sub-add-btn" id="subAddBtn">添加订阅</button>
     </div>` : `<div class="sub-note" style="margin-bottom:24px">已达订阅上限（${subState.max} 个），删除现有订阅后可重新添加。</div>`;
@@ -3309,6 +3301,11 @@ async function addSubscription(){
   const notifyInput = document.getElementById('subNotifyEmail');
   const btn = document.getElementById('subAddBtn');
   if(!kwInput) return;
+  // 邀请码用户：一次性邀请码不具备订阅资格，仅校园邮箱登录用户可用
+  if(subState.isInvite){
+    toast('订阅推送仅对校园邮箱登录用户开放');
+    return;
+  }
   const keyword = kwInput.value.trim();
   if(!keyword){ toast('请输入关键词'); return; }
   const body = { keyword };

@@ -391,6 +391,11 @@ function ensureDb() {
   try {
     db.exec("ALTER TABLE users ADD COLUMN pledged INTEGER DEFAULT 0");
   } catch (e) { /* 字段已存在则忽略 */ }
+  // 兼容已存在的表：补充 verify_codes.ip 字段（用于每 IP 每日验证次数限制）
+  try {
+    db.exec("ALTER TABLE verify_codes ADD COLUMN ip TEXT DEFAULT ''");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_verify_codes_ip ON verify_codes(ip, sent_at)");
+  } catch (e) { /* 字段已存在则忽略 */ }
   console.log("[db] 数据库已连接（可写模式）:", DB_PATH);
   return db;
 }
@@ -907,15 +912,16 @@ function handleAuthSendCode(body, ip) {
     throw new Error("请使用北大校园邮箱（@pku.edu.cn 或 @stu.pku.edu.cn）");
   }
   const now = Math.floor(Date.now() / 1000);
-
-  // 检查 IP 每日限额
-  const ipKey = `verify_ip_${ip}`;
   const todayStart = new Date().setHours(0, 0, 0, 0) / 1000;
-  const ipCount = queryOne("SELECT COUNT(*) as c FROM verify_codes WHERE sent_at >= ? AND ? != ''", [todayStart, ip])?.c || 0;
-  // 用 visit_logs 粗略记录 IP 发送次数
-  const ipSentToday = queryAll("SELECT email FROM verify_codes WHERE sent_at >= ?", [todayStart]);
-  const ipFiltered = ipSentToday.length;
-  // 不够精确，改为简单全局限制
+
+  // 每 IP 每日验证请求上限（防邮箱轰炸：攻击者无法用同一 IP 向大量校园邮箱发验证码）
+  const ipCount = queryOne(
+    "SELECT COUNT(*) as c FROM verify_codes WHERE ip = ? AND sent_at >= ?",
+    [ip, todayStart]
+  )?.c || 0;
+  if (ipCount >= VERIFY_IP_DAILY_LIMIT) {
+    throw new Error(`今日验证请求次数已达上限（${VERIFY_IP_DAILY_LIMIT} 次/天）`);
+  }
 
   // 检查重发间隔
   const existing = queryOne("SELECT * FROM verify_codes WHERE email = ?", [email]);
@@ -926,12 +932,12 @@ function handleAuthSendCode(body, ip) {
   // 生成 6 位验证码
   const code = String(Math.floor(Math.random() * 900000) + 100000);
 
-  // 存储/更新验证码
+  // 存储/更新验证码（同时记录 IP，用于每 IP 每日限额）
   db.prepare(
-    `INSERT INTO verify_codes (email, code, expires_at, sent_at, attempts)
-     VALUES (?, ?, ?, ?, 0)
-     ON CONFLICT(email) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, sent_at=excluded.sent_at, attempts=0`
-  ).run(email, code, now + CODE_TTL, now);
+    `INSERT INTO verify_codes (email, code, expires_at, sent_at, attempts, ip)
+     VALUES (?, ?, ?, ?, 0, ?)
+     ON CONFLICT(email) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, sent_at=excluded.sent_at, attempts=0, ip=excluded.ip`
+  ).run(email, code, now + CODE_TTL, now, ip);
 
   // 异步发送邮件
   sendVerifyCodeEmail(email, code).then(() => {
@@ -1315,19 +1321,16 @@ function handleSubscribeAdd(body, req) {
   const payload = verifyToken(getCookie(req, "treehole_token"));
   if (!payload) throw new Error("未登录");
   const email = payload.email;
-  const keyword = String(body.keyword || "").trim();
+  // 邀请码为一次性凭证，不具备订阅推送资格（仅校园邮箱登录用户可订阅）
+  if (isInviteUser(email)) {
+    throw new Error("订阅推送仅对校园邮箱登录用户开放");
+  }
+  const keyword = String(body.keyword || "").trim().replace(/[\x00-\x1f\x7f]/g, "");
   if (keyword.length < SUB_KEYWORD_MIN || keyword.length > SUB_KEYWORD_MAX) {
     throw new Error(`关键词长度需在 ${SUB_KEYWORD_MIN}-${SUB_KEYWORD_MAX} 字之间`);
   }
-  // 收信邮箱：邀请码用户必填，校园邮箱用户默认用注册邮箱
-  let notifyEmail = String(body.notifyEmail || "").trim().toLowerCase();
-  if (isInviteUser(email)) {
-    if (!notifyEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(notifyEmail)) {
-      throw new Error("邀请码用户请填写有效的收信邮箱");
-    }
-  } else {
-    notifyEmail = notifyEmail || email;
-  }
+  // 收信邮箱：强制使用用户注册邮箱（忽略前端传入的 notifyEmail，防止借订阅向他人邮箱轰炸）
+  const notifyEmail = email;
   // 数量上限
   const cnt = queryOne("SELECT COUNT(*) as c FROM subscriptions WHERE user_email = ?", [email]).c;
   if (cnt >= MAX_SUBS_PER_USER) {
