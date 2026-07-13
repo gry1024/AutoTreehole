@@ -22,6 +22,8 @@ package-lock.json
 # 部署与运维脚本（含服务器凭证，不公开）
 deploy/
 askpass.bat
+# AGENT 交接文档（含服务器路径/部署流程等敏感运维信息，不上传 GitHub）
+AGENT.md
 
 # 报告与生成产物
 reports/
