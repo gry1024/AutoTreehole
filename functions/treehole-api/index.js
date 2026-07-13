@@ -287,8 +287,12 @@ function tokenDaysLeft(token) {
 }
 
 function getClientIp(req) {
-  const fwd = req.headers["x-forwarded-for"];
-  return fwd ? fwd.split(",")[0].trim() : (req.socket.remoteAddress || "unknown");
+  // 仅信任 nginx 设置的 X-Real-IP（nginx 用 $remote_addr 覆盖，客户端无法伪造）
+  // 不信任 X-Forwarded-For（nginx 用 $proxy_add_x_forwarded_for 追加，客户端可伪造）
+  const real = req.headers["x-real-ip"];
+  if (real && typeof real === "string") return real.trim();
+  const raw = req.socket.remoteAddress || "unknown";
+  return raw.replace(/^::ffff:/, "");
 }
 
 function sendJson(res, status, data) {
@@ -339,7 +343,8 @@ function esc(s) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function validateInt(val, min, max, def) {
@@ -348,33 +353,52 @@ function validateInt(val, min, max, def) {
   return Math.max(min, Math.min(max, n));
 }
 
-/** 安全校验：禁止 LLM 请求指向内网/本地/元数据地址（防 SSRF） */
-function assertSafeUrl(rawUrl) {
+/** 判断 IP 字符串是否为内网/本地/链路本地地址（IPv4 + IPv6） */
+function isPrivateIP(ip) {
+  const s = String(ip).toLowerCase();
+  // IPv4
+  if (/^127\./.test(s) || /^10\./.test(s) || /^192\.168\./.test(s)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(s)) return true;
+  if (/^169\.254\./.test(s)) return true;
+  if (/^0\./.test(s) || s === "0.0.0.0") return true;
+  // IPv4-mapped IPv6
+  if (/^::ffff:/.test(s)) {
+    const v4 = s.replace(/^::ffff:/, "");
+    return isPrivateIP(v4);
+  }
+  // IPv6 本地回环 / ULA / link-local
+  if (s === "::1" || s === "localhost") return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(s)) return true;   // fc00::/7 ULA
+  if (/^fe[89ab][0-9a-f]:/.test(s)) return true;    // fe80::/10 link-local
+  return false;
+}
+
+/** 安全校验：禁止 LLM 请求指向内网/本地/元数据地址（防 SSRF）
+ *  异步版本：先做字符串黑名单快检，再 DNS 解析后校验所有返回 IP（防 DNS rebinding） */
+async function assertSafeUrl(rawUrl) {
   let parsed;
   try { parsed = new URL(rawUrl); } catch { throw new Error("API URL 格式无效"); }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("API URL 协议无效（仅允许 http/https）");
   }
   const host = parsed.hostname.toLowerCase();
-  // 禁止本地/内网/链路本地/元数据地址
-  if (host === "localhost" || host === "::1" || host === "0.0.0.0") {
-    throw new Error("不允许指向本地地址");
+  // 第一层：字符串黑名单快检（拦截字面量内网地址）
+  if (host === "localhost" || host === "::1" || host === "0.0.0.0" || isPrivateIP(host)) {
+    throw new Error("不允许指向本地/内网地址");
   }
-  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) {
-    throw new Error("不允许指向内网地址");
-  }
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-    throw new Error("不允许指向内网地址");
-  }
-  if (/^169\.254\./.test(host)) {
-    throw new Error("不允许指向链路本地地址");
-  }
-  if (/^::ffff:/i.test(host)) {
-    // IPv4-mapped IPv6，提取 IPv4 部分再查
-    const v4 = host.slice(7);
-    if (/^127\./.test(v4) || /^10\./.test(v4) || /^192\.168\./.test(v4) || /^169\.254\./.test(v4)) {
-      throw new Error("不允许指向内网地址");
+  // 第二层：DNS 解析后校验所有返回的 IP（防 DNS rebinding：域名解析到内网）
+  const dns = require("dns").promises;
+  try {
+    const addrs = await dns.lookup(host, { all: true });
+    for (const { address } of addrs) {
+      if (isPrivateIP(address)) {
+        throw new Error(`不允许指向内网地址（${host} → ${address}）`);
+      }
     }
+  } catch (e) {
+    // DNS 解析失败：若 host 是 IP 字面量则已被第一层拦截；若是域名解析失败则放行让 fetch 自行报错
+    if (e.message && e.message.includes("不允许指向")) throw e;
+    // 其他 DNS 错误（ENOTFOUND 等）不拦截，交给 fetch 处理
   }
 }
 
@@ -692,9 +716,9 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
       url = LLM_PROVIDERS[provider].url;
       fmt = LLM_PROVIDERS[provider].fmt;
     }
-    // 安全：阻断 SSRF —— 禁止指向内网/本地地址
+    // 安全：阻断 SSRF —— 禁止指向内网/本地地址（含 DNS rebinding 防护）
     try {
-      assertSafeUrl(url);
+      await assertSafeUrl(url);
     } catch (ssrfErr) {
       alertAdmin("error", "ssrf", "检测到 SSRF 攻击尝试", `用户提交的 LLM URL 被安全策略拦截: ${url}\n原因: ${ssrfErr.message}`, ip);
       throw ssrfErr;
@@ -856,7 +880,7 @@ async function handleReport(body, ip) {
     if (keywords.some((k) => k.length > MAX_KEYWORD_LEN)) throw new Error("关键词过长");
     const useful = filterUseful(queryKeywordPosts(keywords));
     posts = sampleForLlm(useful).posts;
-    if (!posts.length) throw new Error(`未找到与「${body.keyword}」相关的帖子`);
+    if (!posts.length) throw new Error("未找到与该关键词相关的帖子");
     promptData = buildKeywordPrompt(posts, keywords, useful.length);
   } else {
     const useful = filterUseful(queryWeekPosts(days));
@@ -902,7 +926,7 @@ function handleReportPrepare(body) {
     if (keywords.some((k) => k.length > MAX_KEYWORD_LEN)) throw new Error("关键词过长");
     const useful = filterUseful(queryKeywordPosts(keywords));
     posts = sampleForLlm(useful).posts;
-    if (!posts.length) throw new Error(`未找到与「${body.keyword}」相关的帖子`);
+    if (!posts.length) throw new Error("未找到与该关键词相关的帖子");
     promptData = buildKeywordPrompt(posts, keywords, useful.length);
   } else {
     const useful = filterUseful(queryWeekPosts(days));
@@ -986,7 +1010,10 @@ function verifyToken(token) {
   const age = Math.floor(Date.now() / 1000) - ts;
   if (age > TOKEN_MAX_AGE) return null;
   const expectedSig = crypto.createHmac("sha256", TOKEN_SECRET).update(`${email}.${ts}`).digest("hex");
-  if (sig !== expectedSig) return null;
+  // 恒时比较，防计时攻击
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expectedSig);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   return { email, ts, age };
 }
 
@@ -1140,11 +1167,11 @@ async function handleMessage(body, req) {
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
       <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">📬 站长信箱新留言</h2>
       <table style="width:100%;font-size:14px;color:#1D1D1F;line-height:1.8;margin-bottom:20px;">
-        <tr><td style="color:#86868B;width:80px;vertical-align:top;">注册邮箱</td><td>${userEmail}</td></tr>
-        ${contact ? `<tr><td style="color:#86868B;vertical-align:top;">联系方式</td><td>${contact}</td></tr>` : ""}
+        <tr><td style="color:#86868B;width:80px;vertical-align:top;">注册邮箱</td><td>${esc(userEmail)}</td></tr>
+        ${contact ? `<tr><td style="color:#86868B;vertical-align:top;">联系方式</td><td>${esc(contact)}</td></tr>` : ""}
       </table>
       <div style="background:#fff;border-radius:8px;padding:20px 24px;">
-        <p style="color:#1D1D1F;font-size:14px;line-height:1.8;white-space:pre-wrap;">${content.replace(/</g,"&lt;")}</p>
+        <p style="color:#1D1D1F;font-size:14px;line-height:1.8;white-space:pre-wrap;">${esc(content)}</p>
       </div>
       <p style="color:#86868B;font-size:12px;margin-top:16px;">此邮件由 AutoTreehole 系统自动发送</p>
     </div>`,
@@ -1179,13 +1206,13 @@ async function handlePublicMessage(body, req) {
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
       <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">📬 站长信箱新留言（访客）</h2>
       <table style="width:100%;font-size:14px;color:#1D1D1F;line-height:1.8;margin-bottom:20px;">
-        <tr><td style="color:#86868B;width:80px;vertical-align:top;">来源</td><td>未登录访客${source ? " · " + source.replace(/</g,"&lt;") : ""}</td></tr>
-        <tr><td style="color:#86868B;vertical-align:top;">联系方式</td><td>${contact.replace(/</g,"&lt;")}</td></tr>
+        <tr><td style="color:#86868B;width:80px;vertical-align:top;">来源</td><td>未登录访客${source ? " · " + esc(source) : ""}</td></tr>
+        <tr><td style="color:#86868B;vertical-align:top;">联系方式</td><td>${esc(contact)}</td></tr>
       </table>
       <div style="background:#fff;border-radius:8px;padding:20px 24px;">
-        <p style="color:#1D1D1F;font-size:14px;line-height:1.8;white-space:pre-wrap;">${content.replace(/</g,"&lt;")}</p>
+        <p style="color:#1D1D1F;font-size:14px;line-height:1.8;white-space:pre-wrap;">${esc(content)}</p>
       </div>
-      <p style="color:#86868B;font-size:12px;margin-top:16px;">此邮件由 AutoTreehole 系统自动发送 · IP: ${ip.replace(/</g,"&lt;")}</p>
+      <p style="color:#86868B;font-size:12px;margin-top:16px;">此邮件由 AutoTreehole 系统自动发送 · IP: ${esc(ip)}</p>
     </div>`,
   };
   await getMailer().sendMail(mailOptions);
@@ -2120,27 +2147,29 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 数据后台接口（需要管理员密码）
-    if (route === "admin/stats") {
-      const adminKey = query.key || getCookie(req, "admin_key");
-      if (adminKey !== ADMIN_PASSWORD) {
+    // admin 端点统一做速率限制（防暴力破解）+ 恒时密码比较（防计时攻击）
+    if (route.startsWith("admin/")) {
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      const adminKey = (query.key || getCookie(req, "admin_key") || "").toString();
+      const a = Buffer.from(adminKey);
+      const b = Buffer.from(ADMIN_PASSWORD || "");
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
         sendError(res, 403, "无权访问");
         return;
       }
+    }
+    if (route === "admin/stats") {
       await ensureDb();
       sendJson(res, 200, handleAdminStats());
       return;
     }
     if (route === "admin/invite/list") {
-      const adminKey = query.key || getCookie(req, "admin_key");
-      if (adminKey !== ADMIN_PASSWORD) { sendError(res, 403, "无权访问"); return; }
       await ensureDb();
       sendJson(res, 200, handleAdminInviteList(query));
       return;
     }
     if (route === "admin/invite/create") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
-      const adminKey = query.key || getCookie(req, "admin_key");
-      if (adminKey !== ADMIN_PASSWORD) { sendError(res, 403, "无权访问"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       try {
@@ -2150,8 +2179,6 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === "admin/invite/delete") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
-      const adminKey = query.key || getCookie(req, "admin_key");
-      if (adminKey !== ADMIN_PASSWORD) { sendError(res, 403, "无权访问"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       try {
@@ -2274,4 +2301,9 @@ setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscri
 
 // HTTP 服务器入口：监听指定端口
 // 仅监听 127.0.0.1，公网通过 Nginx 反代访问，禁止绕过 Nginx 直连 9000
+// 启动前强校验：TOKEN_SECRET 不能为空或默认值（否则任何人可离线伪造登录令牌）
+if (!TOKEN_SECRET || TOKEN_SECRET.length < 16 || TOKEN_SECRET.startsWith("please_change")) {
+  console.error("[FATAL] TOKEN_SECRET 未设置或过短或仍为默认值，拒绝启动。请生成随机密钥写入 .env");
+  process.exit(1);
+}
 server.listen(PORT, "127.0.0.1", () => { console.log(`[treehole-api] 服务启动，监听 127.0.0.1:${PORT}`); });
