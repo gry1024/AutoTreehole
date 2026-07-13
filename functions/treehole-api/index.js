@@ -1897,6 +1897,8 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsed.pathname;
   const query = parsed.query;
   const ip = getClientIp(req);
+  // route 提到 try 外定义，使 catch 块的告警埋点也能访问（避免 ReferenceError）
+  const route = pathname.startsWith("/api/") ? pathname.slice(5) : "";
 
   try {
     // 健康检查
@@ -1909,8 +1911,6 @@ const server = http.createServer(async (req, res) => {
       sendError(res, 404, "Not Found");
       return;
     }
-
-    const route = pathname.slice(5);
 
     // 服务状态（含 token 剩余天数，用于前端提示）
     if (route === "status") {
