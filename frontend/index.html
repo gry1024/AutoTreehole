@@ -147,6 +147,14 @@ input,select,textarea{font-family:var(--font-sans);color:inherit}
   line-height:1.2;
   color:var(--fg);
 }
+.section-title-sub{
+  font-size:13px;font-weight:300;
+  color:var(--fg-tertiary);
+  font-family:var(--font-sans);
+  letter-spacing:0.02em;
+  margin-left:8px;
+  white-space:nowrap;
+}
 .section-sub{
   color:var(--fg-secondary);font-size:13px;
   margin-top:4px;font-weight:400;
@@ -437,6 +445,11 @@ select.input{
   color:var(--fg-secondary);letter-spacing:0.03em;
 }
 .overview-section .os-sub{font-size:13px;color:var(--fg-secondary);font-weight:300}
+.overview-section .os-sub-inline{
+  font-size:12px;color:var(--fg-tertiary);font-weight:300;
+  font-family:var(--font-sans);letter-spacing:0.02em;
+  margin-left:4px;
+}
 .overview-section .os-refresh{
   font-size:12px;color:var(--fg-secondary);
   display:flex;align-items:center;gap:8px;
@@ -1078,10 +1091,12 @@ mark{
   .container{padding:20px 14px 40px}
   .section-title{font-size:19px}
   .section-sub{font-size:12px}
+  .section-title-sub{font-size:11px;display:block;margin-left:0;margin-top:4px}
   .section-head{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:18px}
   .os-refresh{font-size:11px}
-  .os-title{font-size:18px}
+  .os-title{font-size:18px;flex-wrap:wrap;gap:6px 8px}
   .os-badge{font-size:10px;padding:2px 8px}
+  .os-sub-inline{font-size:11px;width:100%;margin-left:0;order:99}
   .toolbar{flex-direction:column;align-items:stretch;gap:12px}
   .toolbar .input,.toolbar select.input{width:100%}
   .btn{width:100%}
@@ -1090,7 +1105,6 @@ mark{
   .stat-card:nth-child(2n){border-right:none}
   .stat-card .stat-value{font-size:20px}
   .stat-card .stat-label{font-size:11px}
-  .stats-note{font-size:11px;text-align:left}
   .bubble-grid{grid-template-columns:1fr}
   .bubble-card{border-right:none;padding:16px 0}
   .bubble-card .bc-text{font-size:13px;-webkit-line-clamp:5;max-height:7.5em}
@@ -1151,37 +1165,21 @@ mark{
 /* ==================== 邮箱验证遮罩 ==================== */
 .auth-overlay{
   position:fixed;inset:0;z-index:9999;
-  background:
-    radial-gradient(circle at 18% 22%, rgba(91,141,191,0.32) 0%, transparent 32%),
-    radial-gradient(circle at 82% 16%, rgba(139,123,184,0.30) 0%, transparent 34%),
-    radial-gradient(circle at 22% 78%, rgba(107,168,137,0.28) 0%, transparent 32%),
-    radial-gradient(circle at 78% 76%, rgba(184,120,120,0.26) 0%, transparent 34%),
-    radial-gradient(circle at 50% 50%, rgba(184,154,107,0.22) 0%, transparent 42%),
-    var(--bg);
+  background:rgba(245,245,247,0.72);
+  backdrop-filter:blur(22px) saturate(160%);
+  -webkit-backdrop-filter:blur(22px) saturate(160%);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
   overflow:hidden;
-}
-.auth-overlay::before{
-  content:"";position:absolute;inset:0;pointer-events:none;
-  background:
-    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.5) 0%, transparent 18%),
-    radial-gradient(circle at 65% 70%, rgba(255,255,255,0.4) 0%, transparent 20%);
-  filter:blur(30px);
 }
 .auth-overlay.hidden{display:none}
 
 /* ==================== 承诺窗口 ==================== */
 .pledge-overlay{
   position:fixed;inset:0;z-index:9998;
-  background:
-    radial-gradient(circle at 18% 22%, rgba(91,141,191,0.32) 0%, transparent 32%),
-    radial-gradient(circle at 82% 16%, rgba(139,123,184,0.30) 0%, transparent 34%),
-    radial-gradient(circle at 22% 78%, rgba(107,168,137,0.28) 0%, transparent 32%),
-    radial-gradient(circle at 78% 76%, rgba(184,120,120,0.26) 0%, transparent 34%),
-    radial-gradient(circle at 50% 50%, rgba(184,154,107,0.22) 0%, transparent 42%),
-    rgba(245,245,247,0.86);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  background:rgba(245,245,247,0.72);
+  backdrop-filter:blur(22px) saturate(160%);
+  -webkit-backdrop-filter:blur(22px) saturate(160%);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
   overflow:hidden;
@@ -1529,7 +1527,7 @@ mark{
   <section class="panel active" id="panel-overview">
     <div class="section-head">
       <div>
-        <div class="section-title">数据概览</div>
+        <div class="section-title">数据概览 <span class="section-title-sub" id="statsNote">数据跨度：—</span></div>
       </div>
       <div class="os-refresh">
         <span class="live-dot"></span>
@@ -1540,7 +1538,6 @@ mark{
       </div>
     </div>
     <div class="stats-grid" id="statsGrid"></div>
-    <div class="stats-note" id="statsNote">数据跨度：—</div>
 
     <!-- 话题分布 · 环形图（内嵌统计区） -->
     <div class="dist-row" id="distRow">
@@ -1555,8 +1552,8 @@ mark{
           <div class="os-title">
             最新热点
             <span class="os-badge">近 24 小时 · 收藏 ≥ 10</span>
+            <span class="os-sub-inline">点击卡片查看完整内容与评论</span>
           </div>
-          <div class="os-sub">点击卡片查看完整内容与评论</div>
         </div>
       </div>
       <div class="bubble-grid" id="bubbleGrid24h">
@@ -1574,8 +1571,8 @@ mark{
           <div class="os-title">
             近 7 天热点
             <span class="os-badge">近 7 天 · 收藏 ≥ 10</span>
+            <span class="os-sub-inline">点击卡片查看完整内容与评论</span>
           </div>
-          <div class="os-sub">点击卡片查看完整内容与评论</div>
         </div>
       </div>
       <div class="bubble-grid" id="bubbleGrid7d">
@@ -1733,7 +1730,7 @@ mark{
 
       <div class="about-section">
         <h3 class="about-h">开源仓库</h3>
-        <p class="about-p">本站完整代码已开源，供有学习需求的同学参考。仅限个人学习使用，请勿用于商业用途或二次搭建公开站点。</p>
+        <p class="about-p">本站完整代码已开源，供有学习需求的同学参考。仅限个人使用，请勿用于商业用途或二次搭建公开站点。</p>
         <a class="about-repo" href="https://github.com/gry1024/AutoTreehole" target="_blank" rel="noopener noreferrer">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           <span>github.com/gry1024/AutoTreehole</span>
@@ -1745,7 +1742,7 @@ mark{
         <h3 class="about-h" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">站长信箱<span style="font-size:13px;font-weight:400;color:var(--fg-secondary);letter-spacing:0">交流一下？</span></h3>
         <div class="about-field">
           <label>留言内容</label>
-          <textarea id="msgContent" class="about-textarea" rows="5" placeholder="写下你想说的话…" maxlength="5000"></textarea>
+          <textarea id="msgContent" class="about-textarea" rows="5" placeholder="问题反馈、建议、合作交流…" maxlength="5000"></textarea>
         </div>
         <div class="about-field">
           <label>联系方式（选填）</label>
@@ -2195,8 +2192,8 @@ document.getElementById('detailBackBtn').addEventListener('click', returnToOrigi
 
 /* ==================== 概览：统计 ==================== */
 const STAT_CARDS = [
-  {key:'holes',    label:'帖子总数', grad:1, icon:'<path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v9.5A1.75 1.75 0 0114.25 14H8.061l-2.574 2.573A1.458 1.458 0 013 15.543V14H1.75A1.75 1.75 0 010 12.25v-9.5C0 1.784.784 1 1.75 1z"/>'},
-  {key:'week',     label:'近 7 天新帖', grad:3, icon:'<path d="M4.75 0a.75.75 0 01.75.75V2h5V.75a.75.75 0 011.5 0V2h1.25c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 16H2.75A1.75 1.75 0 011 14.25V3.75C1 2.784 1.784 2 2.75 2H4V.75A.75.75 0 014.75 0zM2.5 7.5v6.75c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25V7.5h-11z"/>'},
+  {key:'holes',    label:'入库洞数', grad:1, icon:'<path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v9.5A1.75 1.75 0 0114.25 14H8.061l-2.574 2.573A1.458 1.458 0 013 15.543V14H1.75A1.75 1.75 0 010 12.25v-9.5C0 1.784.784 1 1.75 1z"/>'},
+  {key:'week',     label:'近7天新洞', grad:3, icon:'<path d="M4.75 0a.75.75 0 01.75.75V2h5V.75a.75.75 0 011.5 0V2h1.25c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 16H2.75A1.75 1.75 0 011 14.25V3.75C1 2.784 1.784 2 2.75 2H4V.75A.75.75 0 014.75 0zM2.5 7.5v6.75c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25V7.5h-11z"/>'},
   {key:'avg_like', label:'平均收藏', grad:4, icon:'<path d="M8 .25l2.12 4.3 4.74.69-3.43 3.34.81 4.72L8 11.06l-4.24 2.23.81-4.72L1.14 5.24l4.74-.69L8 .25z"/>'},
   {key:'avg_reply',label:'平均评论', grad:5, icon:'<path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z"/>'}
 ];
@@ -2216,7 +2213,6 @@ async function loadStats(){
         <div class="stat-icon-wrap"><svg viewBox="0 0 16 16" fill="currentColor">${c.icon}</svg></div>
         <div class="stat-value">${fmtNum(s[c.key])}</div>
         <div class="stat-label">${c.label}</div>
-        <div class="stat-delta">${c.key==='avg_like'||c.key==='avg_reply' ? '全库均值' : (c.key==='week' ? '最近一周新增' : '累计入库')}</div>
       </div>`).join('');
     const minT = s.min_ts, maxT = s.max_ts;
     if(minT && maxT){
@@ -2280,7 +2276,7 @@ function drawDistribution(categories, total){
   </svg>
   <div class="dist-center">
     <div class="dist-num">${fmtNum(total)}</div>
-    <div class="dist-num-label">近7天帖数</div>
+    <div class="dist-num-label">近7天洞数</div>
   </div>`;
   // 图例
   legend.innerHTML = sorted.map(cat => {
