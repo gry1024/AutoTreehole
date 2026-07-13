@@ -1441,6 +1441,7 @@ mark{
         <span class="auth-resend" id="authResend">重新发送验证码</span>
         <p class="auth-hint" id="authEmailHint"></p>
       </div>
+      <p class="auth-hint" style="margin-top:20px"><a href="javascript:void(0)" id="emailProblemLink">遇到问题？</a></p>
     </div>
 
     <!-- 邀请码模式 -->
@@ -1477,7 +1478,7 @@ mark{
   <div class="msg-card">
     <button class="msg-close" id="msgClose" aria-label="关闭">×</button>
     <h2>站长信箱</h2>
-    <p class="msg-sub">想获取邀请码？请留下你的联系方式和想说的话，站长会尽快与你联系并发送邀请码。</p>
+    <p class="msg-sub" id="msgSub">想获取邀请码？请留下你的联系方式和想说的话，站长会尽快与你联系并发送邀请码。</p>
     <div class="msg-field">
       <label>联系方式（必填）</label>
       <input type="text" id="pubMsgContact" class="msg-input" placeholder="邮箱 / 微信 / 其他" maxlength="200">
@@ -1959,12 +1960,23 @@ function openMsgOverlay(source){
   document.getElementById('pubMsgArea').innerHTML = '';
   // 记录来源（如：获取邀请码），随留言一起发送，便于站长识别
   document.getElementById('msgOverlay').dataset.source = source || '';
+  // 根据来源动态切换副标题与占位符
+  const subEl = document.getElementById('msgSub');
+  const taEl = document.getElementById('pubMsgContent');
+  if(source === '遇到问题'){
+    subEl.textContent = '遇到问题？请留下你的联系方式和问题描述，站长会尽快与你联系。';
+    taEl.placeholder = '请描述你遇到的问题…';
+  }else{
+    subEl.textContent = '想获取邀请码？请留下你的联系方式和想说的话，站长会尽快与你联系并发送邀请码。';
+    taEl.placeholder = '请说明你的身份…';
+  }
   setTimeout(() => document.getElementById('pubMsgContact').focus(), 100);
 }
 function closeMsgOverlay(){
   document.getElementById('msgOverlay').classList.add('hidden');
 }
 document.getElementById('getInviteCodeLink').addEventListener('click', () => openMsgOverlay('获取邀请码'));
+document.getElementById('emailProblemLink').addEventListener('click', () => openMsgOverlay('遇到问题'));
 document.getElementById('msgClose').addEventListener('click', closeMsgOverlay);
 document.getElementById('msgOverlay').addEventListener('click', e => {
   if(e.target === document.getElementById('msgOverlay')) closeMsgOverlay();
