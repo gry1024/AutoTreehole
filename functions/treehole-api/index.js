@@ -2100,7 +2100,8 @@ setInterval(checkTokenAndWarn, 6 * 3600_000);
 
 // ==================== 关键词订阅扫描定时器 ====================
 // 启动后 60 秒首次扫描（首次仅设水位线不补推），之后每 2 分钟扫描一次
-setTimeout(() => { ensureDb().then(scanAndNotify).catch(e => console.error("[subscribe] 启动扫描失败:", e.message)); }, 60_000);
+// 注意：ensureDb() 是同步函数（返回 db，非 Promise），不能链式调用 .then
+setTimeout(() => { try { ensureDb(); scanAndNotify(); } catch (e) { console.error("[subscribe] 启动扫描失败:", e.message); } }, 60_000);
 setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscribe] 定时扫描异常:", e.message); } }, SUB_SCAN_INTERVAL_MS);
 
 // HTTP 服务器入口：监听指定端口
