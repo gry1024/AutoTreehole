@@ -1165,29 +1165,37 @@ mark{
 /* ==================== 邮箱验证遮罩 ==================== */
 .auth-overlay{
   position:fixed;inset:0;z-index:9999;
-  background:#F5F5F7;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(91,141,191,0.32) 0%, transparent 32%),
+    radial-gradient(circle at 82% 16%, rgba(139,123,184,0.30) 0%, transparent 34%),
+    radial-gradient(circle at 22% 78%, rgba(107,168,137,0.28) 0%, transparent 32%),
+    radial-gradient(circle at 78% 76%, rgba(184,120,120,0.26) 0%, transparent 34%),
+    radial-gradient(circle at 50% 50%, rgba(184,154,107,0.22) 0%, transparent 42%),
+    var(--bg);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
   overflow:hidden;
 }
-/* 概览页静态轮廓背景（模糊处理，能看到网页大致结构但看不清字） */
-.auth-overlay::before,
-.pledge-overlay::before{
+.auth-overlay::before{
   content:"";position:absolute;inset:0;pointer-events:none;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1024' height='1400' viewBox='0 0 1024 1400'><rect width='1024' height='1400' fill='%23F5F5F7'/><!-- 顶部导航条 --><rect x='0' y='0' width='1024' height='56' fill='%23FFFFFF'/><rect x='40' y='18' width='120' height='20' rx='3' fill='%23E8E8ED'/><rect x='180' y='18' width='60' height='20' rx='3' fill='%23E8E8ED'/><rect x='260' y='18' width='60' height='20' rx='3' fill='%23E8E8ED'/><rect x='340' y='18' width='60' height='20' rx='3' fill='%23E8E8ED'/><!-- 数据概览标题 --><rect x='40' y='90' width='180' height='28' rx='3' fill='%23D2D2D7'/><rect x='40' y='128' width='220' height='14' rx='3' fill='%23E8E8ED'/><!-- 统计卡 5 列 --><line x1='40' y1='170' x2='984' y2='170' stroke='%23E8E8ED' stroke-width='1'/><rect x='40' y='180' width='180' height='90' fill='%23FFFFFF'/><circle cx='60' cy='200' r='8' fill='%235B8DBF'/><rect x='56' y='220' width='60' height='20' rx='2' fill='%2386868B'/><rect x='56' y='248' width='40' height='12' rx='2' fill='%23D2D2D7'/><rect x='240' y='180' width='180' height='90' fill='%23FFFFFF'/><circle cx='260' cy='200' r='8' fill='%238B7BB8'/><rect x='256' y='220' width='60' height='20' rx='2' fill='%2386868B'/><rect x='256' y='248' width='40' height='12' rx='2' fill='%23D2D2D7'/><rect x='440' y='180' width='180' height='90' fill='%23FFFFFF'/><circle cx='460' cy='200' r='8' fill='%236BA889'/><rect x='456' y='220' width='60' height='20' rx='2' fill='%2386868B'/><rect x='456' y='248' width='40' height='12' rx='2' fill='%23D2D2D7'/><rect x='640' y='180' width='180' height='90' fill='%23FFFFFF'/><circle cx='660' cy='200' r='8' fill='%23B87878'/><rect x='656' y='220' width='60' height='20' rx='2' fill='%2386868B'/><rect x='656' y='248' width='40' height='12' rx='2' fill='%23D2D2D7'/><rect x='840' y='180' width='144' height='90' fill='%23FFFFFF'/><circle cx='860' cy='200' r='8' fill='%23B89A6B'/><rect x='856' y='220' width='60' height='20' rx='2' fill='%2386868B'/><rect x='856' y='248' width='40' height='12' rx='2' fill='%23D2D2D7'/><line x1='40' y1='280' x2='984' y2='280' stroke='%23E8E8ED' stroke-width='1'/><!-- 环形图 --><circle cx='100' cy='340' r='36' fill='none' stroke='%238B7BB8' stroke-width='8'/><circle cx='100' cy='340' r='36' fill='none' stroke='%235B8DBF' stroke-width='8' stroke-dasharray='80 226'/><rect x='160' y='320' width='80' height='12' rx='2' fill='%23D2D2D7'/><rect x='160' y='340' width='60' height='12' rx='2' fill='%23E8E8ED'/><rect x='260' y='320' width='80' height='12' rx='2' fill='%23D2D2D7'/><rect x='260' y='340' width='60' height='12' rx='2' fill='%23E8E8ED'/><rect x='360' y='320' width='80' height='12' rx='2' fill='%23D2D2D7'/><rect x='360' y='340' width='60' height='12' rx='2' fill='%23E8E8ED'/><!-- 最新热点标题 --><rect x='40' y='420' width='160' height='26' rx='3' fill='%23D2D2D7'/><rect x='210' y='426' width='140' height='16' rx='8' fill='%23E8E8ED'/><!-- 热帖气泡 1 --><rect x='40' y='470' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='56' y='486' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='56' y='502' width='200' height='10' rx='2' fill='%23E8E8ED'/><rect x='56' y='518' width='220' height='10' rx='2' fill='%23E8E8ED'/><rect x='56' y='536' width='60' height='10' rx='2' fill='%23E8E8ED'/><rect x='340' y='470' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='356' y='486' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='356' y='502' width='200' height='10' rx='2' fill='%23E8E8ED'/><rect x='356' y='518' width='220' height='10' rx='2' fill='%23E8E8ED'/><rect x='356' y='536' width='60' height='10' rx='2' fill='%23E8E8ED'/><rect x='640' y='470' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='656' y='486' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='656' y='502' width='200' height='10' rx='2' fill='%23E8E8ED'/><rect x='656' y='518' width='220' height='10' rx='2' fill='%23E8E8ED'/><rect x='656' y='536' width='60' height='10' rx='2' fill='%23E8E8ED'/><!-- 热帖气泡 2 --><rect x='40' y='566' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='56' y='582' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='56' y='598' width='200' height='10' rx='2' fill='%23E8E8ED'/><rect x='56' y='614' width='220' height='10' rx='2' fill='%23E8E8ED'/><rect x='340' y='566' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='356' y='582' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='640' y='566' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='656' y='582' width='240' height='10' rx='2' fill='%23D2D2D7'/><!-- 7天热点标题 --><rect x='40' y='680' width='180' height='26' rx='3' fill='%23D2D2D7'/><rect x='230' y='686' width='140' height='16' rx='8' fill='%23E8E8ED'/><!-- 热帖气泡 3 --><rect x='40' y='730' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='56' y='746' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='56' y='762' width='200' height='10' rx='2' fill='%23E8E8ED'/><rect x='340' y='730' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='356' y='746' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='640' y='730' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='656' y='746' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='40' y='826' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='56' y='842' width='240' height='10' rx='2' fill='%23D2D2D7'/><rect x='340' y='826' width='280' height='80' rx='6' fill='%23FFFFFF'/><rect x='640' y='826' width='280' height='80' rx='6' fill='%23FFFFFF'/></svg>");
-  background-size:cover;
-  background-position:center top;
-  background-repeat:no-repeat;
-  filter:blur(7px);
-  transform:scale(1.08);
-  opacity:0.95;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.5) 0%, transparent 18%),
+    radial-gradient(circle at 65% 70%, rgba(255,255,255,0.4) 0%, transparent 20%);
+  filter:blur(30px);
 }
 .auth-overlay.hidden{display:none}
 
 /* ==================== 承诺窗口 ==================== */
 .pledge-overlay{
   position:fixed;inset:0;z-index:9998;
-  background:#F5F5F7;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(91,141,191,0.32) 0%, transparent 32%),
+    radial-gradient(circle at 82% 16%, rgba(139,123,184,0.30) 0%, transparent 34%),
+    radial-gradient(circle at 22% 78%, rgba(107,168,137,0.28) 0%, transparent 32%),
+    radial-gradient(circle at 78% 76%, rgba(184,120,120,0.26) 0%, transparent 34%),
+    radial-gradient(circle at 50% 50%, rgba(184,154,107,0.22) 0%, transparent 42%),
+    rgba(245,245,247,0.86);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   display:flex;align-items:center;justify-content:center;
   padding:24px;
   overflow:hidden;
