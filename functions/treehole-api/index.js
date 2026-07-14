@@ -1449,8 +1449,17 @@ function handleSubscribeList(req) {
   const payload = verifyToken(getCookie(req, "treehole_token"));
   if (!payload) throw new Error("未登录");
   const email = payload.email;
+  // LEFT JOIN subscription_sent + holes：统计每个订阅的推送次数 + 平均延迟（帖子发布到邮件发出的秒数）
   const rows = queryAll(
-    "SELECT id, keyword, notify_email, created_at FROM subscriptions WHERE user_email = ? ORDER BY created_at ASC",
+    `SELECT s.id, s.keyword, s.notify_email, s.created_at,
+            COUNT(ss.pid) AS push_count,
+            AVG(ss.sent_at - h.timestamp) AS avg_delay
+     FROM subscriptions s
+     LEFT JOIN subscription_sent ss ON ss.sub_id = s.id
+     LEFT JOIN holes h ON h.pid = ss.pid
+     WHERE s.user_email = ?
+     GROUP BY s.id
+     ORDER BY s.created_at ASC`,
     [email]
   );
   return { success: true, subscriptions: rows, max: MAX_SUBS_PER_USER, isInvite: isInviteUser(email) };

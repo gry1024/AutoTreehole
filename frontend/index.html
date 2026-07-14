@@ -578,8 +578,8 @@ select.input{
 }
 .post-item-aside .meta{display:inline-flex;align-items:center;gap:4px}
 .post-item-aside .meta svg{width:14px;height:14px}
-.post-item-aside .meta.hot{color:var(--fg-secondary)}
-.post-item-aside .meta.cmt{color:var(--fg-secondary)}
+.post-item-aside .meta.hot{color:#B87878}
+.post-item-aside .meta.cmt{color:#5B8DBF}
 
 .pid-link{
   font-family:var(--mono);font-size:13px;font-weight:400;
@@ -1615,7 +1615,7 @@ mark{
       AutoTreehole<span class="header-tagline">不再错过每一条有价值的树洞</span>
     </div>
     <nav class="header-tabs" id="headerTabs">
-      <button class="tab-btn active" data-panel="overview">概览</button>
+      <button class="tab-btn active" data-panel="overview">首页</button>
       <button class="tab-btn" data-panel="hot">热帖</button>
       <button class="tab-btn" data-panel="report">AI报告</button>
       <button class="tab-btn" data-panel="favorites">我的收藏</button>
@@ -2247,6 +2247,16 @@ function fmtNum(n){
   if(n >= 1e8) return (n/1e8).toFixed(2) + '亿';
   if(n >= 1e4) return (n/1e4).toFixed(1) + '万';
   return n.toLocaleString('zh-CN');
+}
+
+// 格式化推送延迟（秒 → 可读时长，用于订阅统计）
+function fmtDelay(sec){
+  if(sec == null || isNaN(sec) || sec < 0) return '—';
+  sec = Number(sec);
+  if(sec < 60) return Math.round(sec) + '秒';
+  if(sec < 3600) return Math.round(sec / 60) + '分钟';
+  if(sec < 86400) return (sec / 3600).toFixed(1) + '小时';
+  return (sec / 86400).toFixed(1) + '天';
 }
 
 /* 复制文本到剪贴板（兼容 HTTP 非安全上下文） */
@@ -3236,9 +3246,9 @@ function renderFavorites(items){
       </div>
       <div class="bc-text">${esc(excerpt)}</div>
       <div class="bc-footer">
-        <span>收藏 ${fmtNum(p.likenum)}</span>
-        <span>评论 ${fmtNum(p.reply)}</span>
-        <span>发布 ${fmtTime(p.timestamp)}</span>
+        <span class="bc-meta hot">${HEART_ICON}${fmtNum(p.likenum)}</span>
+        <span class="bc-meta cmt">${CMT_ICON}${fmtNum(p.reply)}</span>
+        <span class="bc-time">发布 ${fmtTime(p.timestamp)}</span>
       </div>
     </div>`;
   }).join('');
@@ -3303,14 +3313,19 @@ function renderSubscriptions(){
   if(subState.list.length === 0){
     listHtml = `<div class="sub-empty">还没有订阅任何关键词<div style="font-size:12px;margin-top:8px;color:var(--fg-tertiary)">添加后，新帖匹配时将自动邮件提醒你</div></div>`;
   }else{
-    listHtml = `<div class="sub-list">${subState.list.map(s => `
+    listHtml = `<div class="sub-list">${subState.list.map(s => {
+      const pushInfo = s.push_count > 0
+        ? `已推送 <b style="color:var(--fg)">${s.push_count}</b> 次 · 平均延迟 <b style="color:var(--fg)">${fmtDelay(s.avg_delay)}</b>`
+        : '暂未推送';
+      return `
       <div class="sub-item">
         <div>
           <div class="sub-item-kw">${esc(s.keyword)}</div>
-          <div class="sub-item-meta">推送至 ${esc(s.notify_email)} · 订阅于 ${fmtTime(s.created_at)}</div>
+          <div class="sub-item-meta">推送至 ${esc(s.notify_email)} · 订阅于 ${fmtTime(s.created_at)} · ${pushInfo}</div>
         </div>
         <button class="sub-remove-btn" data-id="${esc(s.id)}">退订</button>
-      </div>`).join('')}</div>`;
+      </div>`;
+    }).join('')}</div>`;
   }
 
   wrap.innerHTML = addHtml + listHtml;
