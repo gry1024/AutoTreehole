@@ -863,7 +863,7 @@ mark{
 }
 .cref{
   font-size:11px;color:var(--fg-secondary);
-  font-family:var(--mono);
+  font-family:var(--font-sans);
   background:none;padding:0;border-radius:0;
 }
 .ctext{
@@ -3081,29 +3081,33 @@ function renderDetail(data, area){
     for(let i=0;i<n.length;i++) h = (h*31 + n.charCodeAt(i)) & 0x7fffffff;
     return 'c' + (h % 8);
   }
-  // 解析 quote 字段：可能是 JSON 字符串（含完整被引用评论对象），提取其中的 text
+  // 解析 quote 字段：JSON 字符串含完整被引用评论对象，提取被引用者 name_tag + text
   function parseQuote(q){
-    if(!q) return '';
+    if(!q) return null;
     try{
       const obj = typeof q === 'string' ? JSON.parse(q) : q;
-      if(obj && typeof obj === 'object' && obj.text) return obj.text;
+      if(obj && typeof obj === 'object') {
+        return { name: obj.name_tag || obj.name || '', text: obj.text || '' };
+      }
     }catch(e){}
-    return String(q); // 非 JSON，直接返回原文
+    return { name: '', text: String(q) };
   }
-  // 判断是否为洞主（name_tag 为 Alice 且第一条评论，或 name_tag === 'Alice'）
-  const opName = 'Alice';
+  // 判断是否为洞主（树洞 API 中洞主的 name 为 "Alice" 或 "洞主"）
   const commentsHTML = comments.length ? comments.map(c => {
-    const quoteText = parseQuote(c.quote);
-    const isOp = (c.name||'').trim() === opName;
+    const q = parseQuote(c.quote);
+    const quoteName = q ? q.name : '';
+    const quoteText = q ? q.text : '';
+    const name = (c.name||'').trim();
+    const isOp = name === 'Alice' || name === '洞主';
     const aClass = isOp ? 'op' : avatarClass(c.name);
     return `
     <div class="comment ${c.comment_id?'has-parent':''}">
       <div class="avatar ${aClass}">${esc(avatar(c.name))}</div>
       <div class="comment-body">
         <div class="comment-head">
-          <span class="cname">${esc(c.name||'匿名')}${isOp?' <span style="font-size:10px;color:var(--fg-tertiary);font-weight:400">· 洞主</span>':''}</span>
+          <span class="cname">${esc(c.name||'匿名')}</span>
           <span class="ctime">${relTime(c.timestamp)}</span>
-          ${c.comment_id?`<span class="cref">↩ #${esc(c.comment_id)}</span>`:''}
+          ${quoteName?`<span class="cref">↩ ${esc(quoteName)}</span>`:''}
         </div>
         ${quoteText?`<div class="cquote">${esc(quoteText)}</div>`:''}
         <div class="ctext">${esc(c.text||'')}</div>
