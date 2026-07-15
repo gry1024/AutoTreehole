@@ -943,22 +943,8 @@ mark{
 }
 .weekly-card-foot{font-size:11px;color:var(--fg-secondary);font-weight:300;}
 
-/* 周报全文页（panel-weekly 内 markdown 样式） */
-#panel-weekly .markdown{
-  font-family:var(--font-sans);font-size:15px;line-height:1.85;color:var(--fg);max-width:none;
-}
-#panel-weekly .markdown h1,#panel-weekly .markdown h2,#panel-weekly .markdown h3{
-  font-family:var(--font-serif);color:var(--fg);font-weight:600;
-}
-#panel-weekly .markdown h2{font-size:19px;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--divider-subtle);}
-#panel-weekly .markdown h3{font-size:16px;margin:22px 0 10px;}
-#panel-weekly .markdown p{margin:12px 0;}
-#panel-weekly .markdown a{color:var(--accent);text-decoration:none;}
-#panel-weekly .markdown a:hover{text-decoration:underline;}
-#panel-weekly .markdown blockquote{border-left:3px solid var(--divider-subtle);padding:4px 16px;color:var(--fg-secondary);margin:12px 0;}
-#panel-weekly .markdown ul,#panel-weekly .markdown ol{padding-left:22px;margin:12px 0;}
-#panel-weekly .markdown code{font-family:var(--mono);font-size:13px;background:rgba(0,0,0,0.04);padding:2px 6px;border-radius:4px;}
-#panel-weekly .markdown hr{border:none;border-top:1px solid var(--divider-subtle);margin:24px 0;}
+/* 周报全文页（沿用全局 .markdown 衬线排版，仅微调间距） */
+#panel-weekly .markdown{max-width:none;}
 .report-controls{
   padding:0;display:flex;flex-direction:column;gap:20px;
   position:sticky;top:80px;
@@ -1228,11 +1214,11 @@ mark{
   .section-head{margin-bottom:20px}
 }
 @media (max-width:640px){
-  .header-inner{padding:10px 14px;gap:10px}
-  .header-logo{width:30px;height:30px}
+  .header-inner{padding:10px 14px;flex-direction:column;align-items:flex-start;gap:6px}
+  .header-logo{width:28px;height:28px}
   .header-title{font-size:15px;gap:8px}
-  .header-tagline{display:none}
-  .header-tabs{gap:14px;margin-left:auto}
+  .header-tagline{display:inline;font-size:11px;padding-left:8px;margin-left:2px}
+  .header-tabs{gap:14px;margin-left:0;width:100%;padding-bottom:2px}
   .tab-btn{font-size:13px}
   .container{padding:20px 14px 40px}
   .section-title{font-size:19px}
@@ -3298,7 +3284,19 @@ async function openWeeklyReport(weekStart){
     if(meta) meta.textContent = `${fmtTime(data.week_start).slice(0,10)} ~ ${fmtTime(data.week_end-1).slice(0,10)} · 生成于 ${fmtTime(data.created_at)}`;
     if(body){
       body.innerHTML = `<div class="markdown">${renderMarkdown(data.content)}</div>`;
-      body.querySelectorAll('.markdown a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+      // 本站内部洞号链接：当前页打开详情；外部链接：新标签
+      body.querySelectorAll('.markdown a').forEach(a => {
+        const href = a.getAttribute('href') || '';
+        if(href.startsWith('/?pid=') || href.startsWith(location.origin + '/?pid=')){
+          a.addEventListener('click', e => {
+            e.preventDefault();
+            const m = href.match(/pid=(\d+)/);
+            if(m){ switchPanel('detail'); document.getElementById('detailPid').value = m[1]; loadDetail(m[1]); }
+          });
+        }else{
+          a.target = '_blank'; a.rel = 'noopener noreferrer';
+        }
+      });
     }
   }catch(e){
     if(body) body.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--fg-secondary);font-size:13px;font-weight:300">加载失败，请返回后重试</div>`;
@@ -3402,7 +3400,19 @@ async function genReport(){
         () => flash('error', '复制失败，请手动选择文本复制')
       );
     });
-    card.querySelectorAll('.markdown a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+    // 本站内部洞号链接：当前页打开详情；外部链接：新标签
+    card.querySelectorAll('.markdown a').forEach(a => {
+      const href = a.getAttribute('href') || '';
+      if(href.startsWith('/?pid=') || href.startsWith(location.origin + '/?pid=')){
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          const m = href.match(/pid=(\d+)/);
+          if(m){ switchPanel('detail'); document.getElementById('detailPid').value = m[1]; loadDetail(m[1]); }
+        });
+      }else{
+        a.target = '_blank'; a.rel = 'noopener noreferrer';
+      }
+    });
     flash('success', `报告生成完成 · ${currentProvider}`);
   }catch(e){
     stopProgress();
@@ -3866,6 +3876,14 @@ async function checkTokenStatus(){
   const ok = await checkAuth();
   if(ok){
     loadAppData();
+    // 支持 ?pid=xxx#detail 直接打开帖子详情（报告/周报中的内部洞号链接）
+    const params = new URLSearchParams(location.search);
+    const pidParam = params.get('pid');
+    if(pidParam && /^\d{5,}$/.test(pidParam) && location.hash === '#detail'){
+      switchPanel('detail');
+      document.getElementById('detailPid').value = pidParam;
+      loadDetail(pidParam);
+    }
   }
 })();
 </script>

@@ -801,7 +801,8 @@ async function callLlmWithFallback(system, user, provider, customConfig, ip = ""
 // ==================== 报告后处理 ====================
 function enrichReport(content) {
   const HOLE_PID_MIN = 10000;
-  const URL_TPL = "https://treehole.pku.edu.cn/web/#/hole/";
+  // 报告中的原洞链接指向本站内部详情页（/?pid=PID#detail），不跳转外部树洞平台
+  const URL_TPL = "/?pid=";
 
   // 提取所有被引用的洞号（去重保序）
   const pids = [];
@@ -811,10 +812,10 @@ function enrichReport(content) {
     if (pid >= HOLE_PID_MIN && !seen.has(pid)) { seen.add(pid); pids.push(pid); }
   }
 
-  // 超链接化
+  // 超链接化（指向本站详情页）
   const enriched = content.replace(/#(\d+)/g, (match, num) => {
     const pid = parseInt(num, 10);
-    return pid >= HOLE_PID_MIN ? `[#${pid}](${URL_TPL}${pid})` : match;
+    return pid >= HOLE_PID_MIN ? `[#${pid}](${URL_TPL}${pid}#detail)` : match;
   });
 
   if (!pids.length) return enriched;
@@ -827,9 +828,9 @@ function enrichReport(content) {
   for (const pid of pids) {
     const r = rowMap.get(pid);
     if (r) {
-      appendix += `### [#${pid}](${URL_TPL}${pid})\n- 时间：${fmtTime(r.timestamp)}　收藏：${r.likenum}　评论：${r.reply}\n- 原文：\n\n> ${(r.text || "").trim()}\n\n`;
+      appendix += `### [#${pid}](${URL_TPL}${pid}#detail)\n- 时间：${fmtTime(r.timestamp)}　收藏：${r.likenum}　评论：${r.reply}\n- 原文：\n\n> ${(r.text || "").trim()}\n\n`;
     } else {
-      appendix += `### [#${pid}](${URL_TPL}${pid})\n\n> （数据库中未找到该帖子）\n\n`;
+      appendix += `### [#${pid}](${URL_TPL}${pid}#detail)\n\n> （数据库中未找到该帖子）\n\n`;
     }
   }
   return enriched + appendix;
