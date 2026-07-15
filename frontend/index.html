@@ -943,42 +943,22 @@ mark{
 }
 .weekly-card-foot{font-size:11px;color:var(--fg-secondary);font-weight:300;}
 
-/* 周报全文 Modal */
-.weekly-modal{
-  position:fixed;inset:0;z-index:1200;display:none;
-  background:rgba(0,0,0,0.5);backdrop-filter:blur(6px);
-  align-items:flex-start;justify-content:center;
-  overflow-y:auto;padding:40px 16px;
-}
-.weekly-modal.show{display:flex;}
-.weekly-modal-box{
-  background:#fff;border-radius:14px;max-width:680px;width:100%;
-  margin:auto;padding:32px 36px;position:relative;
-  box-shadow:0 20px 60px rgba(0,0,0,0.18);
-}
-.weekly-modal-close{
-  position:absolute;top:14px;right:16px;width:32px;height:32px;
-  display:flex;align-items:center;justify-content:center;
-  border:none;background:transparent;cursor:pointer;color:var(--fg-secondary);
-  border-radius:50%;transition:background .15s;
-}
-.weekly-modal-close:hover{background:rgba(0,0,0,0.06);color:var(--fg);}
-.weekly-modal-meta{font-size:12px;color:var(--fg-secondary);margin-bottom:16px;font-weight:300;}
-.weekly-modal-box .markdown{
+/* 周报全文页（panel-weekly 内 markdown 样式） */
+#panel-weekly .markdown{
   font-family:var(--font-sans);font-size:15px;line-height:1.85;color:var(--fg);max-width:none;
 }
-.weekly-modal-box .markdown h1,.weekly-modal-box .markdown h2,.weekly-modal-box .markdown h3{
+#panel-weekly .markdown h1,#panel-weekly .markdown h2,#panel-weekly .markdown h3{
   font-family:var(--font-serif);color:var(--fg);font-weight:600;
 }
-.weekly-modal-box .markdown h2{font-size:19px;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--divider-subtle);}
-.weekly-modal-box .markdown h3{font-size:16px;margin:22px 0 10px;}
-.weekly-modal-box .markdown p{margin:12px 0;}
-.weekly-modal-box .markdown a{color:var(--accent);text-decoration:none;}
-.weekly-modal-box .markdown a:hover{text-decoration:underline;}
-.weekly-modal-box .markdown blockquote{border-left:3px solid var(--divider-subtle);padding:4px 16px;color:var(--fg-secondary);margin:12px 0;}
-.weekly-modal-box .markdown ul,.weekly-modal-box .markdown ol{padding-left:22px;margin:12px 0;}
-.weekly-modal-box .markdown code{font-family:var(--mono);font-size:13px;background:rgba(0,0,0,0.04);padding:2px 6px;border-radius:4px;}
-.weekly-modal-box .markdown hr{border:none;border-top:1px solid var(--divider-subtle);margin:24px 0;}
+#panel-weekly .markdown h2{font-size:19px;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--divider-subtle);}
+#panel-weekly .markdown h3{font-size:16px;margin:22px 0 10px;}
+#panel-weekly .markdown p{margin:12px 0;}
+#panel-weekly .markdown a{color:var(--accent);text-decoration:none;}
+#panel-weekly .markdown a:hover{text-decoration:underline;}
+#panel-weekly .markdown blockquote{border-left:3px solid var(--divider-subtle);padding:4px 16px;color:var(--fg-secondary);margin:12px 0;}
+#panel-weekly .markdown ul,#panel-weekly .markdown ol{padding-left:22px;margin:12px 0;}
+#panel-weekly .markdown code{font-family:var(--mono);font-size:13px;background:rgba(0,0,0,0.04);padding:2px 6px;border-radius:4px;}
+#panel-weekly .markdown hr{border:none;border-top:1px solid var(--divider-subtle);margin:24px 0;}
 .report-controls{
   padding:0;display:flex;flex-direction:column;gap:20px;
   position:sticky;top:80px;
@@ -1047,7 +1027,7 @@ mark{
   font-family:var(--font-sans);
 }
 .provider-head .pbadge.ok{
-  background:var(--divider-subtle);color:var(--fg-secondary);border:none;
+  background:rgba(48,209,88,0.12);color:#248a3d;border:none;
 }
 .provider-head .pbadge.no{
   background:var(--divider-subtle);color:var(--fg-secondary);border:none;
@@ -1901,7 +1881,6 @@ mark{
             <svg viewBox="0 0 16 16" fill="currentColor" style="width:18px;height:18px;color:var(--accent)"><path d="M1.5 2.75A1.75 1.75 0 013.25 1h9.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0112.75 15h-9.5A1.75 1.75 0 011.5 12.75V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h9.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25h-9.5z"/><path d="M4 5.75A.75.75 0 014.75 5h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 014 5.75zM4 8.75A.75.75 0 014.75 8h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 014 8.75zM4 11.75a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75z"/></svg>
             树洞周报
           </div>
-          <div class="section-sub">每周一自动更新 · AI 总结上周树洞动态，所有用户共享</div>
         </div>
         <div class="weekly-report-meta" id="weeklyReportMeta"></div>
       </div>
@@ -1910,17 +1889,6 @@ mark{
           <span class="spinner spinner-lg"></span>
           <div style="margin-top:10px;font-size:13px;font-weight:300">周报加载中…</div>
         </div>
-      </div>
-    </div>
-
-    <!-- 周报全文 Modal -->
-    <div class="weekly-modal" id="weeklyModal">
-      <div class="weekly-modal-box">
-        <button class="weekly-modal-close" id="weeklyModalClose" aria-label="关闭">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-        </button>
-        <div class="weekly-modal-meta" id="weeklyModalMeta"></div>
-        <div id="weeklyModalBody"></div>
       </div>
     </div>
 
@@ -2026,6 +1994,17 @@ mark{
     <div id="detailArea"></div>
   </section>
 
+  <!-- ========== 树洞周报全文（从卡片点击进入，带返回按钮） ========== -->
+  <section class="panel" id="panel-weekly">
+    <div class="section-head">
+      <div>
+        <div class="section-title" id="weeklyFullTitle">树洞周报</div>
+        <div class="section-sub" id="weeklyFullMeta"></div>
+      </div>
+    </div>
+    <div id="weeklyFullBody"></div>
+  </section>
+
   <!-- ========== 关于 ========== -->
   <section class="panel" id="panel-about">
     <div class="about-wrap">
@@ -2114,6 +2093,11 @@ async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
       try{ data = await resp.json(); }
       catch(e){ throw new Error('响应解析失败（HTTP ' + resp.status + '）'); }
       if(!resp.ok){
+        // 401：登录态失效（token 过期/未登录），刷新页面回到登录入口
+        if(resp.status === 401 && !path.startsWith('/auth/')){
+          if(!window.__authReloading){ window.__authReloading = true; location.reload(); }
+          throw new Error('登录已失效，正在刷新…');
+        }
         const msg = (data && (data.error || data.message)) || ('HTTP ' + resp.status);
         const err = new Error(msg);
         // 透传后端返回的 code（如 QUOTA），并标记不重试
@@ -2146,10 +2130,10 @@ async function checkAuth(){
       authAuthorized = true;
       authEmail = data.email;
       document.getElementById('authOverlay').classList.add('hidden');
-      // 检查是否已承诺
+      // 检查是否已承诺：未承诺则只显示承诺遮罩，不加载主数据
       if(!data.pledged){
         document.getElementById('pledgeOverlay').classList.remove('hidden');
-        return true;
+        return false;
       }
       startTracking();
       return true;
@@ -2670,9 +2654,9 @@ document.querySelectorAll('.tab-btn').forEach(b => {
     if(Math.abs(dx) < SWIPE_THRESHOLD) return;
     if(Math.abs(dx) < Math.abs(dy) * SWIPE_RATIO) return;
     if(dt > 1000) return;
-    // 当前详情页激活时不响应（避免在详情内滑动跳走）
+    // 当前详情页/周报全文页激活时不响应（避免在详情内滑动跳走）
     const active = document.querySelector('.panel.active');
-    if(active && active.id === 'panel-detail') return;
+    if(active && (active.id === 'panel-detail' || active.id === 'panel-weekly')) return;
 
     const order = panelOrder();
     const cur = active ? active.id.replace('panel-', '') : 'overview';
@@ -3067,12 +3051,14 @@ function renderProviders(){
     list.innerHTML = '<div style="padding:16px 0;color:var(--fg-secondary);font-size:13px;font-family:var(--font-sans);font-weight:300">暂无可用模型</div>';
     return;
   }
+  // 可用模型（public）排前面，需配置的排后面
+  const sorted = [...providersData].sort((a, b) => (b.public ? 1 : 0) - (a.public ? 1 : 0));
   // MiniMax 默认选中
   if(!currentProvider){
-    const pub = providersData.find(p => p.public);
+    const pub = sorted.find(p => p.public);
     if(pub){ currentProvider = pub.name; currentProviderConfig = pub; }
   }
-  list.innerHTML = providersData.map(p => {
+  list.innerHTML = sorted.map(p => {
     const selected = p.name === currentProvider ? 'selected' : '';
     const modelOptions = (p.models || [p.model]).map(m =>
       `<option value="${esc(m)}">${esc(m)}</option>`
@@ -3285,44 +3271,39 @@ async function loadWeeklyReport(){
   }
 }
 
-// 打开周报全文 Modal
+// 打开周报全文页（独立 panel，复用详情页返回按钮机制）
 async function openWeeklyReport(weekStart){
-  const modal = document.getElementById('weeklyModal');
-  const modalBody = document.getElementById('weeklyModalBody');
-  const modalMeta = document.getElementById('weeklyModalMeta');
-  if(!modal || !modalBody) return;
-  modalBody.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--fg-secondary)"><span class="spinner spinner-lg"></span><div style="margin-top:10px;font-size:13px;font-weight:300">加载中…</div></div>`;
-  modalMeta.textContent = '';
-  modal.classList.add('show');
-  document.body.style.overflow = 'hidden';
+  const activePanel = document.querySelector('.panel.active');
+  detailOrigin = {
+    panel: activePanel ? activePanel.id.replace('panel-', '') : 'report',
+    scrollY: window.scrollY
+  };
+  const backBtn = document.getElementById('detailBackBtn');
+  if(backBtn) backBtn.style.display = 'flex';
+  const body = document.getElementById('weeklyFullBody');
+  const meta = document.getElementById('weeklyFullMeta');
+  if(body){
+    body.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--fg-secondary)"><span class="spinner spinner-lg"></span><div style="margin-top:12px;font-size:13px;font-weight:300">加载中…</div></div>`;
+  }
+  if(meta) meta.textContent = '';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === 'weekly'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-weekly'));
+  window.scrollTo(0, 0);
   try{
     const data = await api(`/report/weekly?week_start=${encodeURIComponent(weekStart)}`, {method:'GET'});
     if(!data || !data.available){
-      modalBody.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--fg-secondary);font-size:13px;font-weight:300">该期周报不存在或已被移除</div>`;
+      if(body) body.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--fg-secondary);font-size:13px;font-weight:300">该期周报不存在或已被移除</div>`;
       return;
     }
-    modalMeta.textContent = `${fmtTime(data.week_start).slice(0,10)} ~ ${fmtTime(data.week_end-1).slice(0,10)} · 生成于 ${fmtTime(data.created_at)}`;
-    modalBody.innerHTML = `<div class="markdown">${renderMarkdown(data.content)}</div>`;
-    modalBody.querySelectorAll('.markdown a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+    if(meta) meta.textContent = `${fmtTime(data.week_start).slice(0,10)} ~ ${fmtTime(data.week_end-1).slice(0,10)} · 生成于 ${fmtTime(data.created_at)}`;
+    if(body){
+      body.innerHTML = `<div class="markdown">${renderMarkdown(data.content)}</div>`;
+      body.querySelectorAll('.markdown a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+    }
   }catch(e){
-    modalBody.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--fg-secondary);font-size:13px;font-weight:300">加载失败，请关闭后重试</div>`;
+    if(body) body.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--fg-secondary);font-size:13px;font-weight:300">加载失败，请返回后重试</div>`;
   }
 }
-
-function closeWeeklyReport(){
-  const modal = document.getElementById('weeklyModal');
-  if(!modal) return;
-  modal.classList.remove('show');
-  document.body.style.overflow = '';
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const closeBtn = document.getElementById('weeklyModalClose');
-  if(closeBtn) closeBtn.addEventListener('click', closeWeeklyReport);
-  const modal = document.getElementById('weeklyModal');
-  if(modal) modal.addEventListener('click', e => { if(e.target === modal) closeWeeklyReport(); });
-  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeWeeklyReport(); });
-});
 
 async function genReport(){
   const days = parseInt(document.getElementById('reportDays').value, 10);

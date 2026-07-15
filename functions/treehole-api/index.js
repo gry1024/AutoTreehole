@@ -1194,6 +1194,18 @@ function getCookie(req, name) {
   return null;
 }
 
+/**
+ * 数据接口鉴权：校验登录令牌 + 承诺状态，防匿名爬取帖子内容。
+ * @returns {string|null} 已登录且已承诺的用户 email，否则 null
+ */
+function requireAuth(req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) return null;
+  const user = queryOne("SELECT pledged FROM users WHERE email = ?", [payload.email]);
+  if (!user || !user.pledged) return null;
+  return payload.email;
+}
+
 // ==================== 认证 API ====================
 function handleAuthSendCode(body, ip) {
   const email = (body.email || "").trim().toLowerCase();
@@ -2113,8 +2125,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 服务状态（含 token 剩余天数，用于前端提示）
+    // 服务状态（含 token 剩余天数，用于前端提示；需登录防泄露服务器内部状态）
     if (route === "status") {
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       const days = tokenDaysLeft(PKU_TOKEN);
       sendJson(res, 200, {
         status: "ok",
@@ -2127,9 +2141,10 @@ const server = http.createServer(async (req, res) => {
     // 报告接口
     if (route === "report") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       if (!rateLimit(ip, true)) { alertAdmin("warn", "rate_limit", "AI 报告接口触发频率限制", `路由: /api/report`, ip); sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 2 次、每天 15 次；全局每天 200 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
-      await ensureDb();
       try {
         sendJson(res, 200, await handleReport(body, ip));
       } catch (e) {
@@ -2146,9 +2161,10 @@ const server = http.createServer(async (req, res) => {
     // 报告预处理（前端直连模式：只返回 prompt，不调用 LLM，网友 Key 不经过服务器）
     if (route === "report/prepare") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁，每 IP 每分钟限 30 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
-      await ensureDb();
       sendJson(res, 200, handleReportPrepare(body));
       return;
     }
@@ -2156,9 +2172,10 @@ const server = http.createServer(async (req, res) => {
     // 报告后处理（前端直连模式：对 LLM 原始输出做链接化 + 附录，不涉及 Key）
     if (route === "report/enrich") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁，每 IP 每分钟限 30 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
-      await ensureDb();
       sendJson(res, 200, handleReportEnrich(body));
       return;
     }
@@ -2166,8 +2183,9 @@ const server = http.createServer(async (req, res) => {
     // 树洞周报（每周一自动生成，所有用户可读，只读缓存）
     if (route === "report/weekly") {
       if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
-      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       sendJson(res, 200, handleWeeklyReport(query));
       return;
     }
@@ -2384,12 +2402,16 @@ const server = http.createServer(async (req, res) => {
 
     // providers 等轻量接口不需要加载数据库，优先快速响应
     if (route === "providers") {
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       sendJson(res, 200, handleProviders());
       return;
     }
 
     // 图片代理（用树洞 Token 抓取图片，流式返回给前端）
     if (route === "image") {
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       const pid = parseInt(query.pid, 10);
       const idx = parseInt(query.idx, 10) || 0;
       if (!pid || pid < 1) { sendError(res, 400, "无效的 pid"); return; }
@@ -2422,6 +2444,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     await ensureDb();
+    // 数据接口（stats/hot/search/show/trend）需登录 + 承诺，防匿名爬取帖子内容
+    if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
 
     let result;
     switch (route) {
