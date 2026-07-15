@@ -87,10 +87,14 @@ DAILY_REFRESH_HOUR = 3         # 触发小时（凌晨 3 点）
 DB_PATH = _os.environ.get("TREEHOLE_DB_PATH", "./treehole.db")  # 数据库文件路径
 UA = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
 
-# --- LLM 分类（MiniMax，可选）---
+# --- LLM 分类（MiniMax + Qwen fallback，可选）---
 MINIMAX_API_KEY = _os.environ.get("MINIMAX_API_KEY", "")
 MINIMAX_API_URL = "https://api.minimax.chat/v1/text/chatcompletion_v2"
 MINIMAX_MODEL = _os.environ.get("MINIMAX_MODEL", "MiniMax-M3")
+# 通义千问：MiniMax 限额时的备用分类模型
+QWEN_API_KEY = _os.environ.get("DASHSCOPE_API_KEY", "")
+QWEN_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+QWEN_MODEL = _os.environ.get("QWEN_MODEL", "qwen-flash")
 LLM_CLASSIFY_TIMEOUT = 8        # LLM 分类请求超时秒数
 LLM_CLASSIFY_MAX_TEXT = 500     # 传给 LLM 的正文最大字符数（省 token）
 LLM_RETRY_INTERVAL = 10         # 每隔多少轮检查一次 LLM 是否恢复（重试失败队列）
@@ -228,17 +232,10 @@ VALID_CATEGORIES = {"学习", "情感", "生活", "时事", "娱乐", "求助", 
 _llm_healthy = True  # LLM 服务健康标记，失败后临时降级
 
 
-def classify_post_llm(text: str) -> Optional[str]:
-    """调用 MiniMax LLM 对帖子正文进行分类，返回类别名称；失败返回 None。"""
-    global _llm_healthy
-    if not MINIMAX_API_KEY:
-        return None
-    if not text or not text.strip():
-        return "其他"
-    # 截断超长文本，省 token
-    snippet = text.strip()[:LLM_CLASSIFY_MAX_TEXT]
+def _classify_with_api(api_url: str, api_key: str, model: str, snippet: str) -> Optional[str]:
+    """通用 LLM 分类请求：调用指定 API，返回有效类别名；失败返回 None。"""
     payload = {
-        "model": MINIMAX_MODEL,
+        "model": model,
         "messages": [
             {
                 "role": "system",
@@ -254,32 +251,58 @@ def classify_post_llm(text: str) -> Optional[str]:
     }
     try:
         resp = requests.post(
-            MINIMAX_API_URL,
+            api_url,
             headers={
-                "Authorization": f"Bearer {MINIMAX_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,
             timeout=LLM_CLASSIFY_TIMEOUT,
         )
         if resp.status_code != 200:
-            print(f"[llm] HTTP {resp.status_code}，降级到关键词分类", flush=True)
-            _llm_healthy = False
             return None
         data = resp.json()
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         # 提取有效分类名（LLM 可能附带标点或多余文字）
         for cat in VALID_CATEGORIES:
             if cat in content:
-                _llm_healthy = True
                 return cat
-        print(f"[llm] 无法识别返回内容: {content!r}，降级到关键词分类", flush=True)
-        _llm_healthy = False
+        print(f"[llm] 无法识别返回内容: {content!r}", flush=True)
         return None
     except (requests.Timeout, requests.ConnectionError, requests.RequestException) as e:
-        print(f"[llm] 请求异常: {type(e).__name__}，降级到关键词分类", flush=True)
-        _llm_healthy = False
+        print(f"[llm] 请求异常: {type(e).__name__}", flush=True)
         return None
+
+
+def classify_post_llm(text: str) -> Optional[str]:
+    """调用 LLM 对帖子正文进行分类，返回类别名称；失败返回 None。
+    优先 MiniMax，限额/失败时自动 fallback 到 Qwen。
+    """
+    global _llm_healthy
+    if not MINIMAX_API_KEY and not QWEN_API_KEY:
+        return None
+    if not text or not text.strip():
+        return "其他"
+    # 截断超长文本，省 token
+    snippet = text.strip()[:LLM_CLASSIFY_MAX_TEXT]
+    # 1) 先试 MiniMax
+    if MINIMAX_API_KEY:
+        cat = _classify_with_api(MINIMAX_API_URL, MINIMAX_API_KEY, MINIMAX_MODEL, snippet)
+        if cat is not None:
+            _llm_healthy = True
+            return cat
+        print("[llm] MiniMax 分类失败，尝试 fallback 到 Qwen", flush=True)
+    # 2) MiniMax 失败，fallback 到 Qwen
+    if QWEN_API_KEY:
+        cat = _classify_with_api(QWEN_API_URL, QWEN_API_KEY, QWEN_MODEL, snippet)
+        if cat is not None:
+            _llm_healthy = True
+            print("[llm] Qwen fallback 分类成功", flush=True)
+            return cat
+    # 两个都失败，降级到关键词分类
+    print("[llm] MiniMax 与 Qwen 均失败，降级到关键词分类", flush=True)
+    _llm_healthy = False
+    return None
 
 
 def classify_post_hybrid(text: str) -> tuple:

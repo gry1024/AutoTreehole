@@ -78,8 +78,8 @@ const LLM_PROVIDERS = {
     models: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"] },
   kimi:      { key: "MOONSHOT_API_KEY",  url: "https://api.moonshot.cn/v1/chat/completions",                       model: "kimi-k2.5",        fmt: "openai", public: false,
     models: ["kimi-k2.5", "kimi-k2-0905-preview", "kimi-k2-turbo-preview"] },
-  qwen:      { key: "DASHSCOPE_API_KEY", url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: "qwen3.6-plus",     fmt: "openai", public: false,
-    models: ["qwen3.6-max-preview", "qwen3.6-plus", "qwen3.6-flash"] },
+  qwen:      { key: "DASHSCOPE_API_KEY", url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: "qwen-flash",        fmt: "openai", public: true,
+    models: ["qwen-flash", "qwen-turbo", "qwen-plus", "qwen-max"] },
   glm:       { key: "GLM_API_KEY",       url: "https://open.bigmodel.cn/api/paas/v4/chat/completions",              model: "glm-4.6",          fmt: "openai", public: false,
     models: ["glm-4.6", "glm-4.5", "glm-4.5-flash"] },
 };
@@ -778,6 +778,26 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
   return data.choices[0].message.content;
 }
 
+/**
+ * 带 fallback 的 LLM 调用：public 模式下 minimax 达限额时自动改用 qwen 重试。
+ * 仅在服务器 Key 代理（非自定义 customConfig）且 provider 为 minimax 时触发 fallback。
+ * customConfig 模式（用户自带 Key）不 fallback，直接抛出由前端提示。
+ */
+async function callLlmWithFallback(system, user, provider, customConfig, ip = "") {
+  try {
+    return await callLlm(system, user, provider, customConfig, ip);
+  } catch (e) {
+    const canFallback = !customConfig
+      && provider === "minimax"
+      && e.code === "QUOTA"
+      && LLM_PROVIDERS.qwen
+      && process.env[LLM_PROVIDERS.qwen.key];
+    if (!canFallback) throw e;
+    console.log(`[llm] minimax 限额，自动 fallback 到 qwen`);
+    return await callLlm(system, user, "qwen", null, ip);
+  }
+}
+
 // ==================== 报告后处理 ====================
 function enrichReport(content) {
   const HOLE_PID_MIN = 10000;
@@ -913,7 +933,7 @@ async function handleReport(body, ip) {
   }
 
   try {
-    const content = await callLlm(promptData.system, promptData.user, provider, customConfig, ip);
+    const content = await callLlmWithFallback(promptData.system, promptData.user, provider, customConfig, ip);
     logReportCall(ip, provider, mode, true);
     return { content: enrichReport(content) };
   } catch (e) {
@@ -969,7 +989,8 @@ ${formatPostsBlock(rows)}
 - 全程中文，客观不编造帖子中不存在的内容
 - 所有实质性内容必须标注来源洞号「(#pid)」，不得虚构洞号
 - 概括实际内容，不要只列编号
-- 篇幅充实，重点突出，避免空话套话，适合一般用户快速阅读`;
+- 篇幅充实，重点突出，避免空话套话，适合一般用户快速阅读
+- 不要在最前面加「# 北大树洞周报」之类的总标题，直接从「## 一、本周热点回顾」开始；文中也不得出现「北大树洞周报」字样，统一用「树洞周报」`;
   return { system, user };
 }
 
@@ -996,7 +1017,7 @@ async function generateWeeklyReport() {
   const promptData = buildWeeklyReportPrompt(posts, week_start, week_end, useful.length, sampled);
   console.log(`[weekly] 开始生成周报：上周有效帖 ${useful.length} 条，传入 ${posts.length} 条`);
   try {
-    const content = await callLlm(promptData.system, promptData.user, "minimax", null, "system-weekly");
+    const content = await callLlmWithFallback(promptData.system, promptData.user, "minimax", null, "system-weekly");
     const enriched = enrichReport(content);
     db.prepare(
       "INSERT INTO weekly_reports (week_start, week_end, content, created_at) VALUES (?,?,?,?)"
@@ -1007,13 +1028,37 @@ async function generateWeeklyReport() {
   }
 }
 
-/** 返回最新一期树洞周报（供前端展示） */
-function handleWeeklyReport() {
-  const row = queryOne(
-    "SELECT week_start, week_end, content, created_at FROM weekly_reports ORDER BY week_start DESC LIMIT 1"
+/** 返回树洞周报：不带 week_start 时返回最近若干期列表（含摘要），带 week_start 返回单期全文 */
+function handleWeeklyReport(query) {
+  // 单期详情
+  if (query && query.week_start) {
+    const ws = parseInt(query.week_start, 10);
+    if (!ws) return { available: false };
+    const row = queryOne(
+      "SELECT week_start, week_end, content, created_at FROM weekly_reports WHERE week_start = ?", [ws]
+    );
+    if (!row) return { available: false };
+    return { available: true, week_start: row.week_start, week_end: row.week_end, content: row.content, created_at: row.created_at };
+  }
+  // 列表（最近 4 期，含摘要不含全文，避免传输过大）
+  const rows = queryAll(
+    "SELECT week_start, week_end, content, created_at FROM weekly_reports ORDER BY week_start DESC LIMIT 4"
   );
-  if (!row) return { available: false };
-  return { available: true, week_start: row.week_start, week_end: row.week_end, content: row.content, created_at: row.created_at };
+  if (!rows.length) return { available: false, reports: [] };
+  const reports = rows.map((r) => {
+    const plain = (r.content || "")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/[#*`>\[\]()_]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return {
+      week_start: r.week_start,
+      week_end: r.week_end,
+      created_at: r.created_at,
+      summary: plain.slice(0, 120),
+    };
+  });
+  return { available: true, reports };
 }
 
 /** 返回所有支持的 LLM provider 及其预设模型列表（public=true 表示服务器已配置 Key，可直接使用） */
@@ -2123,7 +2168,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       await ensureDb();
-      sendJson(res, 200, handleWeeklyReport());
+      sendJson(res, 200, handleWeeklyReport(query));
       return;
     }
 
