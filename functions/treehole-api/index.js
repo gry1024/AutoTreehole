@@ -1968,6 +1968,26 @@ function handleAdminStats() {
   const topKeywords = queryAll(
     `SELECT keyword, COUNT(*) as cnt FROM subscriptions GROUP BY keyword ORDER BY cnt DESC LIMIT 20`
   );
+  // 按用户聚合：每个用户订阅了哪些关键词（用于数据后台展示）
+  const subByUserRows = queryAll(
+    `SELECT user_email, notify_email, COUNT(*) as cnt, MAX(created_at) as latest
+     FROM subscriptions GROUP BY user_email ORDER BY latest DESC LIMIT 500`
+  );
+  const subKeywordsByUser = queryAll(
+    `SELECT user_email, keyword FROM subscriptions ORDER BY created_at ASC`
+  );
+  const kwMap = new Map();
+  for (const r of subKeywordsByUser) {
+    if (!kwMap.has(r.user_email)) kwMap.set(r.user_email, []);
+    kwMap.get(r.user_email).push(r.keyword);
+  }
+  const subsByUser = subByUserRows.map(r => ({
+    email: r.user_email,
+    notifyEmail: r.notify_email,
+    count: r.cnt,
+    latest: r.latest,
+    keywords: kwMap.get(r.user_email) || [],
+  }));
   const totalSubSent = queryOne("SELECT COUNT(*) as c FROM subscription_sent").c;
   const subSentToday = queryOne(
     "SELECT COUNT(*) as c FROM subscription_sent WHERE sent_at >= ?",
@@ -2071,6 +2091,7 @@ function handleAdminStats() {
       sentTotal: totalSubSent,
       sentToday: subSentToday,
       topKeywords: topKeywords.map(k => ({ keyword: k.keyword, count: k.cnt })),
+      byUser: subsByUser,
     },
     alerts: {
       total: totalAlerts,

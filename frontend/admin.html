@@ -270,6 +270,16 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    <!-- 用户订阅关键词明细 -->
+    <div class="table-section">
+      <div class="table-title">用户订阅关键词明细</div>
+      <div class="chart-sub" id="subByUserStats">每位用户订阅了哪些关键词</div>
+      <table class="data-table" style="margin-top:16px">
+        <thead><tr><th>用户邮箱</th><th>订阅数</th><th>订阅的关键词</th><th>最近订阅时间</th></tr></thead>
+        <tbody id="subByUserBody"></tbody>
+      </table>
+    </div>
+
     <!-- 安全告警 -->
     <div class="chart-section">
       <div class="chart-title">安全告警趋势</div>
@@ -626,6 +636,26 @@ function renderSubsStats(r){
     }).join('');
   }else{
     tk.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无订阅</td></tr>';
+  }
+  // 用户订阅关键词明细
+  const bu = document.getElementById('subByUserBody');
+  const buStats = document.getElementById('subByUserStats');
+  if(r.byUser && r.byUser.length){
+    if(buStats) buStats.textContent = `共 ${r.byUser.length} 位用户订阅了关键词`;
+    bu.innerHTML = r.byUser.map(u => {
+      const email = u.email && u.email.startsWith('invite:') ? '邀请码用户(' + esc(u.notifyEmail || '') + ')' : esc(u.email);
+      const kws = (u.keywords || []).map(k => `<span style="display:inline-block;background:#F0EBF8;color:#8B7BB8;border-radius:3px;padding:2px 8px;margin:2px 4px 2px 0;font-size:12px">${esc(k)}</span>`).join('');
+      const latest = u.latest ? new Date(u.latest * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'}) : '-';
+      return `<tr>
+        <td style="font-weight:500">${email}</td>
+        <td style="color:#B87878;font-weight:600">${u.count}</td>
+        <td>${kws || '<span style="color:#86868B">-</span>'}</td>
+        <td style="color:#86868B;font-size:12px">${latest}</td>
+      </tr>`;
+    }).join('');
+  }else{
+    if(buStats) buStats.textContent = '每位用户订阅了哪些关键词';
+    bu.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无订阅</td></tr>';
   }
 }
 
