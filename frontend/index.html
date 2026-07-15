@@ -610,6 +610,26 @@ select.input{
 .detail-pid-copy:hover .copy-icon{opacity:.8;color:var(--fg-secondary)}
 .detail-pid-copy.copied .copy-icon{opacity:1!important;color:var(--success)}
 
+/* 详情页：跳转树洞按钮（紧随复制按钮） */
+.pid-jump-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:var(--radius-sm);
+  color:var(--fg-tertiary);opacity:.45;
+  transition:opacity .15s,color .15s,background .15s;
+  margin-right:6px;
+}
+.pid-jump-btn svg{width:13px;height:13px;}
+.pid-jump-btn:hover{opacity:1;color:var(--fg-secondary);background:var(--bg-hover);}
+
+/* 详情页正文/评论中的洞号超链接 */
+.hole-id-link{
+  color:var(--accent);text-decoration:none;
+  border-bottom:1px solid transparent;
+  transition:border-color .15s,color .15s;
+  cursor:pointer;font-weight:500;
+}
+.hole-id-link:hover{border-bottom-color:var(--accent);}
+
 .type-tag{
   font-size:11px;font-weight:400;
   padding:2px 8px;border-radius:var(--radius-sm);
@@ -885,6 +905,44 @@ mark{
   display:grid;grid-template-columns:300px 1fr;gap:32px;
   align-items:start;
 }
+
+/* 树洞周报（自动生成区块，置于报告生成器之上） */
+.weekly-report{
+  border-bottom:1px solid var(--divider-subtle);
+  padding-bottom:48px;margin-bottom:48px;
+}
+.weekly-report-head{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  gap:16px;flex-wrap:wrap;margin-bottom:20px;
+}
+.weekly-report-title{
+  font-family:var(--font-serif);font-size:22px;font-weight:600;
+  color:var(--fg);display:flex;align-items:center;gap:10px;
+  margin-bottom:4px;
+}
+.weekly-report-meta{
+  font-size:12px;color:var(--fg-secondary);
+  font-family:var(--font-sans);font-weight:300;text-align:right;
+}
+.weekly-report .markdown{
+  font-family:var(--font-sans);font-size:15px;line-height:1.85;
+  color:var(--fg);max-width:none;
+}
+.weekly-report .markdown h1,.weekly-report .markdown h2,.weekly-report .markdown h3{
+  font-family:var(--font-serif);color:var(--fg);font-weight:600;
+}
+.weekly-report .markdown h2{font-size:19px;margin:32px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--divider-subtle);}
+.weekly-report .markdown h3{font-size:16px;margin:24px 0 10px;}
+.weekly-report .markdown p{margin:12px 0;}
+.weekly-report .markdown a{color:var(--accent);text-decoration:none;}
+.weekly-report .markdown a:hover{text-decoration:underline;}
+.weekly-report .markdown blockquote{
+  border-left:3px solid var(--divider-subtle);padding:4px 16px;
+  color:var(--fg-secondary);margin:12px 0;
+}
+.weekly-report .markdown ul,.weekly-report .markdown ol{padding-left:22px;margin:12px 0;}
+.weekly-report .markdown code{font-family:var(--mono);font-size:13px;background:rgba(0,0,0,0.04);padding:2px 6px;border-radius:4px;}
+.weekly-report .markdown hr{border:none;border-top:1px solid var(--divider-subtle);margin:28px 0;}
 .report-controls{
   padding:0;display:flex;flex-direction:column;gap:20px;
   position:sticky;top:80px;
@@ -1375,6 +1433,62 @@ mark{
 }
 .msg-card .msg-btn:hover{background:#000}
 .msg-card .msg-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ==================== 新手引导（spotlight 明暗框） ==================== */
+.onboarding{
+  position:fixed;inset:0;z-index:9000;
+}
+.onboarding.hidden{display:none}
+/* 聚光灯遮罩：透明高亮框 + 巨大投影形成周围暗色蒙层 */
+.onboarding-spotlight{
+  position:absolute;
+  border-radius:10px;
+  background:transparent;
+  box-shadow:0 0 0 9999px rgba(0,0,0,0.62);
+  transition:all .28s cubic-bezier(.4,0,.2,1);
+  pointer-events:none;
+}
+/* 无目标（欢迎/结束）时隐藏高亮框 */
+.onboarding-spotlight.no-target{
+  width:0;height:0;box-shadow:0 0 0 9999px rgba(0,0,0,0.62);
+  border-radius:0;
+}
+.onboarding-card{
+  position:absolute;
+  max-width:340px;width:calc(100vw - 48px);
+  background:#fff;border-radius:14px;
+  padding:24px 22px 18px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.18);
+  transition:all .28s cubic-bezier(.4,0,.2,1);
+  z-index:1;
+}
+.onboarding-title{
+  font-family:var(--font-serif);font-size:19px;font-weight:600;
+  color:var(--fg);margin-bottom:10px;letter-spacing:-0.01em;
+}
+.onboarding-text{
+  font-size:14px;line-height:1.75;color:var(--fg-secondary);
+  font-family:var(--font-sans);font-weight:300;margin-bottom:16px;
+}
+.onboarding-progress{
+  font-size:12px;color:var(--fg-tertiary);
+  font-family:var(--font-sans);margin-bottom:14px;letter-spacing:0.04em;
+}
+.onboarding-actions{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+}
+.onboarding-skip{
+  background:none;border:none;cursor:pointer;
+  font-size:13px;color:var(--fg-secondary);
+  font-family:var(--font-sans);padding:6px 4px;
+  transition:color .2s;
+}
+.onboarding-skip:hover{color:var(--fg)}
+.onboarding-actions .btn{padding:8px 20px;font-size:14px}
+@media (max-width:480px){
+  .onboarding-card{padding:20px 18px 16px}
+  .onboarding-title{font-size:17px}
+}
 .auth-card{
   position:relative;z-index:1;
   max-width:380px;width:100%;text-align:center;
@@ -1582,6 +1696,20 @@ mark{
 <!-- Flash banner 容器（顶部固定） -->
 <div class="flash-wrap" id="flashWrap"></div>
 
+<!-- 新手引导覆盖层（仅新用户首次进入时显示） -->
+<div class="onboarding hidden" id="onboarding">
+  <div class="onboarding-spotlight" id="onboardingSpotlight"></div>
+  <div class="onboarding-card" id="onboardingCard">
+    <div class="onboarding-title" id="onboardingTitle"></div>
+    <div class="onboarding-text" id="onboardingText"></div>
+    <div class="onboarding-progress" id="onboardingProgress"></div>
+    <div class="onboarding-actions">
+      <button class="onboarding-skip" id="onboardingSkip">跳过</button>
+      <button class="btn btn-primary" id="onboardingNext">下一步</button>
+    </div>
+  </div>
+</div>
+
 <!-- 顶部导航栏 -->
 <header class="header">
   <div class="header-inner">
@@ -1728,6 +1856,27 @@ mark{
         <div class="section-sub">调用大模型生成结构化分析，报告内洞号可点击跳转</div>
       </div>
     </div>
+
+    <!-- 树洞周报（自动生成，所有用户可读） -->
+    <div class="weekly-report">
+      <div class="weekly-report-head">
+        <div>
+          <div class="weekly-report-title">
+            <svg viewBox="0 0 16 16" fill="currentColor" style="width:18px;height:18px;color:var(--accent)"><path d="M1.5 2.75A1.75 1.75 0 013.25 1h9.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0112.75 15h-9.5A1.75 1.75 0 011.5 12.75V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h9.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25h-9.5z"/><path d="M4 5.75A.75.75 0 014.75 5h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 014 5.75zM4 8.75A.75.75 0 014.75 8h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 014 8.75zM4 11.75a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75z"/></svg>
+            树洞周报
+          </div>
+          <div class="section-sub">每周一自动更新 · AI 总结上周树洞动态，所有用户共享</div>
+        </div>
+        <div class="weekly-report-meta" id="weeklyReportMeta"></div>
+      </div>
+      <div id="weeklyReportBody">
+        <div style="text-align:center;padding:32px 24px;color:var(--fg-secondary)">
+          <span class="spinner spinner-lg"></span>
+          <div style="margin-top:12px;font-size:14px;font-weight:300">周报加载中…</div>
+        </div>
+      </div>
+    </div>
+
     <div class="report-grid">
       <!-- 左侧控制面板 -->
       <div class="card report-controls">
@@ -1867,6 +2016,12 @@ mark{
       </div>
 
       <div class="about-section">
+        <h3 class="about-h">新手引导</h3>
+        <p class="about-p">第一次来？花 30 秒快速了解核心功能。</p>
+        <button class="btn" id="replayOnboardingBtn" style="margin-top:8px;padding:8px 18px;font-size:13px">重新查看新手引导</button>
+      </div>
+
+      <div class="about-section">
         <h3 class="about-h">开源仓库</h3>
         <p class="about-p">本站完整代码已开源，供有学习需求的同学参考。仅限个人使用，请勿用于商业用途或二次搭建公开站点。</p>
         <a class="about-repo" href="https://github.com/gry1024/AutoTreehole" target="_blank" rel="noopener noreferrer">
@@ -1929,11 +2084,16 @@ async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
       catch(e){ throw new Error('响应解析失败（HTTP ' + resp.status + '）'); }
       if(!resp.ok){
         const msg = (data && (data.error || data.message)) || ('HTTP ' + resp.status);
-        throw new Error(msg);
+        const err = new Error(msg);
+        // 透传后端返回的 code（如 QUOTA），并标记不重试
+        if(data && data.code){ err.code = data.code; err.noRetry = true; }
+        throw err;
       }
       return data;
     }catch(e){
       if(e && e.name === 'AbortError') throw new Error('请求超时，请稍后重试（报告生成可能需要 1–2 分钟）');
+      // 带 code 的确定性错误（如 QUOTA）不重试，直接抛出
+      if(e && e.noRetry) throw e;
       lastErr = e;
       if(i < retries){
         const delay = retryDelay * Math.pow(2, i) + Math.random() * 300;
@@ -1976,6 +2136,7 @@ function loadAppData(){
   if(typeof startOverviewAutoRefresh === 'function') startOverviewAutoRefresh();
   if(typeof loadProviders === 'function') loadProviders();
   if(typeof checkTokenStatus === 'function') checkTokenStatus();
+  if(typeof loadWeeklyReport === 'function') loadWeeklyReport();
 }
 
 async function acceptPledge(){
@@ -1984,6 +2145,8 @@ async function acceptPledge(){
     document.getElementById('pledgeOverlay').classList.add('hidden');
     startTracking();
     loadAppData();
+    // 新用户首次进入：展示简洁的新手引导（仅一次）
+    setTimeout(() => { if(typeof maybeStartOnboarding === 'function') maybeStartOnboarding(); }, 400);
   }catch(e){
     alert('提交失败，请重试');
   }
@@ -2303,6 +2466,125 @@ function flash(type, message, duration = 4000){
   el.querySelector('.flash-close').addEventListener('click', () => { clearTimeout(timer); remove(); });
 }
 
+/* ==================== 新手引导（spotlight 教程） ==================== */
+// 引导步骤：selector 为高亮目标（null 表示居中卡片）；placement 决定卡片相对位置
+const ONBOARDING_STEPS = [
+  { selector: null, title: '欢迎来到 AutoTreehole',
+    text: '接下来用 30 秒了解几个核心功能。你可以随时跳过，也可在「关于」页再次查看。' },
+  { selector: '.tab-btn[data-panel="overview"]', title: '首页',
+    text: '实时聚合树洞最新动态与热门帖子，每分钟自动刷新。' },
+  { selector: '.tab-btn[data-panel="hot"]', title: '热帖',
+    text: '查看近期高收藏、高讨论的热门洞，不错过大家都在聊的话题。' },
+  { selector: '.tab-btn[data-panel="report"]', title: 'AI 报告',
+    text: '顶部「树洞周报」每周一自动更新，所有人共享；下方可自定义生成全周或关键词专题分析。' },
+  { selector: '.tab-btn[data-panel="subscribe"]', title: '订阅推送',
+    text: '订阅关键词，一旦有新帖命中，即通过邮件提醒你。' },
+  { selector: null, title: '准备就绪',
+    text: '就这些，开始探索吧！遇到问题可在「关于」页联系站长。' },
+];
+
+function maybeStartOnboarding(){
+  if(localStorage.getItem('at_onboarding_done') === '1') return;
+  // 引导元素尚未就绪则稍后重试
+  const root = document.getElementById('onboarding');
+  if(!root) return;
+  startOnboarding();
+}
+
+let onboardingIdx = 0;
+function startOnboarding(){
+  onboardingIdx = 0;
+  const root = document.getElementById('onboarding');
+  if(!root) return;
+  root.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('onboardingSkip').onclick = endOnboarding;
+  document.getElementById('onboardingNext').onclick = () => {
+    if(onboardingIdx >= ONBOARDING_STEPS.length - 1){
+      endOnboarding();
+    }else{
+      onboardingIdx++;
+      renderOnboardingStep();
+    }
+  };
+  renderOnboardingStep();
+}
+
+function endOnboarding(){
+  localStorage.setItem('at_onboarding_done', '1');
+  const root = document.getElementById('onboarding');
+  if(root) root.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function renderOnboardingStep(){
+  const step = ONBOARDING_STEPS[onboardingIdx];
+  const spot = document.getElementById('onboardingSpotlight');
+  const card = document.getElementById('onboardingCard');
+  const titleEl = document.getElementById('onboardingTitle');
+  const textEl = document.getElementById('onboardingText');
+  const progEl = document.getElementById('onboardingProgress');
+  const nextBtn = document.getElementById('onboardingNext');
+  if(!step) return;
+  titleEl.textContent = step.title;
+  textEl.textContent = step.text;
+  progEl.textContent = `${onboardingIdx + 1} / ${ONBOARDING_STEPS.length}`;
+  nextBtn.textContent = (onboardingIdx >= ONBOARDING_STEPS.length - 1) ? '开始使用' : '下一步';
+
+  if(step.selector){
+    const target = document.querySelector(step.selector);
+    if(target){
+      const r = target.getBoundingClientRect();
+      const pad = 6;
+      spot.classList.remove('no-target');
+      spot.style.left = (r.left - pad) + 'px';
+      spot.style.top = (r.top - pad) + 'px';
+      spot.style.width = (r.width + pad * 2) + 'px';
+      spot.style.height = (r.height + pad * 2) + 'px';
+      // 卡片优先放在目标下方，空间不足则上方
+      const cardW = Math.min(340, window.innerWidth - 48);
+      let left = r.left + (r.width / 2) - (cardW / 2);
+      left = Math.max(16, Math.min(left, window.innerWidth - cardW - 16));
+      const below = r.bottom + 16;
+      const cardH = 200; // 估算
+      let top;
+      if(below + cardH < window.innerHeight - 16){
+        top = below;
+      }else{
+        top = Math.max(16, r.top - cardH - 16);
+      }
+      card.style.left = left + 'px';
+      card.style.top = top + 'px';
+      card.style.transform = 'none';
+      return;
+    }
+  }
+  // 无目标（欢迎/结束）：隐藏高亮框，卡片居中
+  spot.classList.add('no-target');
+  spot.style.left = '0'; spot.style.top = '0'; spot.style.width = '0'; spot.style.height = '0';
+  card.style.left = '50%';
+  card.style.top = '50%';
+  card.style.transform = 'translate(-50%, -50%)';
+}
+
+// 窗口尺寸变化时重新定位当前步骤
+window.addEventListener('resize', () => {
+  if(!document.getElementById('onboarding').classList.contains('hidden')){
+    renderOnboardingStep();
+  }
+});
+
+// 「关于」页的重新查看按钮
+function bindReplayOnboarding(){
+  const btn = document.getElementById('replayOnboardingBtn');
+  if(btn) btn.addEventListener('click', () => startOnboarding());
+}
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', bindReplayOnboarding);
+}else{
+  bindReplayOnboarding();
+}
+
 /* ==================== Tab 导航切换 ==================== */
 let detailOrigin = null; // 记录进入详情页前的来源面板和滚动位置
 
@@ -2329,6 +2611,64 @@ function switchPanel(name){
 document.querySelectorAll('.tab-btn').forEach(b => {
   b.addEventListener('click', () => switchPanel(b.dataset.panel));
 });
+
+/* ==================== 移动端左右滑动切换导航 ==================== */
+// 仅在窄屏启用；左右滑动切换至上/下一个主导航面板（跳过详情页）
+// 不拦截竖向滚动，不干扰输入框/报告内容区内的横向操作
+(function(){
+  const SWIPE_THRESHOLD = 60;     // 最小水平位移
+  const SWIPE_RATIO = 1.6;        // 水平/垂直 比值，需更"横"
+  let startX = 0, startY = 0, startT = 0, tracking = false;
+
+  function isMobile(){ return window.matchMedia('(max-width: 768px)').matches; }
+  // 可滑动的主导航顺序（排除 detail —— 详情页通过点击进入/返回）
+  function panelOrder(){
+    return Array.from(document.querySelectorAll('.tab-btn'))
+      .map(b => b.dataset.panel).filter(p => p && p !== 'detail');
+  }
+  // 起点落在这些元素内时不触发切换，避免误触
+  function inNoSwipeZone(el){
+    return !!(el && el.closest('input,textarea,select,[contenteditable="true"],.report-card,.weekly-report .markdown,canvas,iframe,.modal'));
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    if(!isMobile() || !e.touches.length) { tracking = false; return; }
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY; startT = Date.now();
+    tracking = !inNoSwipeZone(e.target);
+  }, {passive: true});
+
+  document.addEventListener('touchend', (e) => {
+    if(!isMobile() || !tracking) { tracking = false; return; }
+    tracking = false;
+    const t = e.changedTouches[0];
+    if(!t) return;
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    const dt = Date.now() - startT;
+    // 需水平占优且位移足够、用时合理（<800ms 视为滑动而非拖拽）
+    if(Math.abs(dx) < SWIPE_THRESHOLD) return;
+    if(Math.abs(dx) < Math.abs(dy) * SWIPE_RATIO) return;
+    if(dt > 1000) return;
+    // 当前详情页激活时不响应（避免在详情内滑动跳走）
+    const active = document.querySelector('.panel.active');
+    if(active && active.id === 'panel-detail') return;
+
+    const order = panelOrder();
+    const cur = active ? active.id.replace('panel-', '') : 'overview';
+    let idx = order.indexOf(cur);
+    if(idx < 0) idx = 0;
+    if(dx < 0){ // 左滑 → 下一个
+      idx = Math.min(order.length - 1, idx + 1);
+    }else{      // 右滑 → 上一个
+      idx = Math.max(0, idx - 1);
+    }
+    if(order[idx] && order[idx] !== cur){
+      switchPanel(order[idx]);
+      window.scrollTo(0, 0);
+    }
+  }, {passive: true});
+})();
 
 /* 从列表点击进入详情（记录来源，支持返回） */
 function openDetail(pid){
@@ -2893,6 +3233,30 @@ function stopProgress(){
   if(reportTimer){ clearInterval(reportTimer); reportTimer = null; }
 }
 
+// 加载树洞周报（自动生成，所有用户可见）
+async function loadWeeklyReport(){
+  const body = document.getElementById('weeklyReportBody');
+  const meta = document.getElementById('weeklyReportMeta');
+  if(!body) return;
+  try{
+    const data = await api('/report/weekly', {method:'GET'});
+    if(!data || !data.available){
+      body.innerHTML = `<div style="text-align:center;padding:28px 24px;color:var(--fg-secondary)">
+        <div style="font-size:14px;font-weight:300">本周周报尚未生成，将于每周一自动更新</div>
+      </div>`;
+      meta.textContent = '';
+      return;
+    }
+    meta.textContent = `${fmtTime(data.week_start).slice(0,10)} ~ ${fmtTime(data.week_end-1).slice(0,10)} · 生成于 ${fmtTime(data.created_at)}`;
+    body.innerHTML = `<div class="markdown">${renderMarkdown(data.content)}</div>`;
+    body.querySelectorAll('.markdown a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+  }catch(e){
+    body.innerHTML = `<div style="text-align:center;padding:28px 24px;color:var(--fg-secondary)">
+      <div style="font-size:14px;font-weight:300">周报加载失败，请稍后刷新重试</div>
+    </div>`;
+  }
+}
+
 async function genReport(){
   const days = parseInt(document.getElementById('reportDays').value, 10);
   if(!days || days < 1 || days > 90){ flash('error', '天数需为 1-90 之间的整数'); return; }
@@ -2994,10 +3358,13 @@ async function genReport(){
     flash('success', `报告生成完成 · ${currentProvider}`);
   }catch(e){
     stopProgress();
+    const isQuota = e && e.code === 'QUOTA';
+    const title = isQuota ? '模型繁忙' : '生成失败';
+    const hint = isQuota ? '<br><span style="font-size:12px;color:var(--fg-secondary)">可稍后重试，或在左侧切换其他 LLM 服务 / 模型后再试</span>' : '';
     card.innerHTML = `<div class="report-placeholder">
       <svg viewBox="0 0 16 16" fill="currentColor" style="color:var(--danger)"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 5.97L9.78 8l2 2.03a.75.75 0 11-1.06 1.06L8.72 9.06l-2.03 2.03a.75.75 0 11-1.06-1.06L7.66 8l-2.03-2.03a.75.75 0 011.06-1.06L8.72 6.94l2-2.03a.75.75 0 011.06 1.06z"/></svg>
-      <h3>生成失败</h3><p>${esc(e.message)}</p></div>`;
-    flash('error', '报告生成失败：' + e.message);
+      <h3>${title}</h3><p>${esc(e.message)}${hint}</p></div>`;
+    flash('error', (isQuota ? '模型繁忙，请稍后再试或更换模型' : '报告生成失败：') + e.message);
   }finally{
     btn.disabled = false;
   }
@@ -3063,6 +3430,32 @@ async function loadDetail(pidOverride){
 document.getElementById('loadDetail').addEventListener('click', () => loadDetail());
 document.getElementById('detailPid').addEventListener('keydown', e => { if(e.key==='Enter') loadDetail(); });
 
+// 北大树洞平台根地址（平台不支持直达具体帖子，仅跳转平台）
+const TREEHOLE_PORTAL = 'https://treehole.pku.edu.cn/web/';
+
+/**
+ * 将文本中符合洞号格式的数字（#12345 / 洞12345，5 位以上）转为可点击链接。
+ * 输入应为已 HTML 转义的文本，因此可安全插入 <a> 标签。
+ * 点击链接：自动复制洞号 + 在新标签打开树洞平台。
+ */
+function linkifyHoleIds(escapedHtml){
+  if(!escapedHtml) return '';
+  // 匹配 #12345 / ##12345 / 洞12345（5 位以上数字，符合树洞 pid 范围 >=10000）
+  return escapedHtml.replace(/(#{1,2})(\d{5,})|(洞)(\d{5,})/g, (m, h, hnum, d, dnum) => {
+    if(h) return `<a class="hole-id-link" data-pid="${hnum}" href="${TREEHOLE_PORTAL}" target="_blank" rel="noopener noreferrer" title="复制洞号并跳转北大树洞">${h}${hnum}</a>`;
+    return `<a class="hole-id-link" data-pid="${dnum}" href="${TREEHOLE_PORTAL}" target="_blank" rel="noopener noreferrer" title="复制洞号并跳转北大树洞">${d}${dnum}</a>`;
+  });
+}
+
+// 委托：点击洞号链接 → 复制洞号（跳转由浏览器原声 href 完成，避免弹窗拦截）
+document.addEventListener('click', e => {
+  const link = e.target.closest('.hole-id-link');
+  if(!link) return;
+  const pid = link.dataset.pid;
+  if(!pid) return;
+  copyText(pid).then(() => flash('success', `已复制洞号 #${pid}，正在跳转北大树洞`)).catch(() => {});
+});
+
 function renderDetail(data, area){
   const post = data.post;
   if(!post){
@@ -3109,8 +3502,8 @@ function renderDetail(data, area){
           <span class="ctime">${relTime(c.timestamp)}</span>
           ${quoteName?`<span class="cref">↩ ${esc(quoteName)}</span>`:''}
         </div>
-        ${quoteText?`<div class="cquote">${esc(quoteText)}</div>`:''}
-        <div class="ctext">${esc(c.text||'')}</div>
+        ${quoteText?`<div class="cquote">${linkifyHoleIds(esc(quoteText))}</div>`:''}
+        <div class="ctext">${linkifyHoleIds(esc(c.text||''))}</div>
       </div>
     </div>`;
   }).join('') : `<div class="empty-state" style="padding:32px"><div>暂无评论</div></div>`;
@@ -3136,10 +3529,13 @@ function renderDetail(data, area){
           #${esc(post.pid)}
           <svg class="copy-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg>
         </span>
+        <a class="pid-jump-btn" href="${TREEHOLE_PORTAL}" target="_blank" rel="noopener noreferrer" title="跳转北大树洞">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h7v7"/><path d="M13 3L3 13"/></svg>
+        </a>
         <span class="type-tag ${t==='image'?'image':'text'}">${t==='image'?'图片':'文本'}</span>
         ${post.deleted ? '<span class="deleted-badge" title="该帖子已被树洞平台管理员删除">已删除</span>' : ''}
       </div>
-      <div class="detail-text">${esc(post.text||'（空）')}</div>
+      <div class="detail-text">${linkifyHoleIds(esc(post.text||'（空）'))}</div>
       ${imagesHTML}
       <div class="detail-meta-row">
         <span>发布：<b>${fmtTime(post.timestamp)}</b></span>
@@ -3319,7 +3715,7 @@ function renderSubscriptions(){
   }else{
     listHtml = `<div class="sub-list">${subState.list.map(s => {
       const pushInfo = s.push_count > 0
-        ? `已推送 <b style="color:var(--fg)">${s.push_count}</b> 次 · 平均延迟 <b style="color:var(--fg)">${fmtDelay(s.avg_delay)}</b>`
+        ? `已推送 <b style="color:var(--fg)">${s.push_count}</b> 次`
         : '暂未推送';
       return `
       <div class="sub-item">

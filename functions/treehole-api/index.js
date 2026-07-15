@@ -505,6 +505,14 @@ function ensureDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_alert_logs_created ON alert_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_alert_logs_type ON alert_logs(type, created_at);
+    CREATE TABLE IF NOT EXISTS weekly_reports (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      week_start INTEGER NOT NULL,   -- 上周一 00:00（上海时间）的时间戳（秒）
+      week_end   INTEGER NOT NULL,   -- 本周一 00:00（上海时间）的时间戳（秒）
+      content    TEXT NOT NULL,      -- 已 enrich 的 Markdown 周报
+      created_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_weekly_reports_start ON weekly_reports(week_start);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -748,9 +756,24 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
   const resp = await fetch(p.url, { method: "POST", headers, body, signal: AbortSignal.timeout(170_000) });
   if (!resp.ok) {
     const text = await resp.text();
+    // 识别限额/速率限制：HTTP 429 或错误体含 quota/rate_limit/exceeded 等
+    if (resp.status === 429 || /quota|rate.?limit|exceeded|too many|余额不足|频率|limit reached/i.test(text)) {
+      const e = new Error(`模型繁忙或已达限额（${resp.status}），请稍后再试或更换模型`);
+      e.code = "QUOTA";
+      throw e;
+    }
     throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0, 300)}`);
   }
   const data = await resp.json();
+  // minimax 限额时 HTTP 可能 200，但 base_resp.status_code 非 0
+  if (data && data.base_resp && data.base_resp.status_code && data.base_resp.status_code !== 0) {
+    const msg = data.base_resp.status_msg || "";
+    if (/quota|limit|exceeded|余额|频率/i.test(msg)) {
+      const e = new Error(`模型繁忙或已达限额，请稍后再试或更换模型`);
+      e.code = "QUOTA";
+      throw e;
+    }
+  }
   if (isAnthropic) return data.content[0].text;
   return data.choices[0].message.content;
 }
@@ -897,6 +920,100 @@ async function handleReport(body, ip) {
     logReportCall(ip, provider, mode, false, e.message);
     throw e;
   }
+}
+
+// ==================== 树洞周报（每周一自动生成，所有用户可读） ====================
+/**
+ * 计算上周（上海时区 UTC+8，周一起算）的 [week_start, week_end) 时间戳（秒）。
+ * week_start = 上周一 00:00（上海），week_end = 本周一 00:00（上海）。
+ */
+function lastWeekRangeShanghai() {
+  const SH_OFFSET_MS = 8 * 3600_000;
+  const shNow = new Date(Date.now() + SH_OFFSET_MS); // UTC 字段即上海墙上时间
+  const day = shNow.getUTCDay(); // 0=周日, 1=周一, ..., 6=周六
+  const monIdx = (day + 6) % 7;   // 周一=0, 周二=1, ..., 周日=6
+  // 上海本周一 00:00 的绝对时刻 = Date.UTC(本周一日期) - 8h
+  const thisMonMs = Date.UTC(shNow.getUTCFullYear(), shNow.getUTCMonth(), shNow.getUTCDate() - monIdx) - SH_OFFSET_MS;
+  const lastMonMs = thisMonMs - 7 * 86_400_000;
+  return { week_start: Math.floor(lastMonMs / 1000), week_end: Math.floor(thisMonMs / 1000) };
+}
+
+function buildWeeklyReportPrompt(rows, weekStart, weekEnd, totalUseful, sampled) {
+  const startStr = fmtTime(weekStart);
+  const endStr = fmtTime(weekEnd - 1);
+  const sampleNote = sampled
+    ? `\n注：上周有效帖 ${totalUseful} 条过多，已按热度取前 ${rows.length} 条传入分析。` : "";
+  const system = "你是资深高校校园动态分析师。基于北京大学树洞（匿名论坛）上周的帖子，撰写一份面向全体用户的「树洞周报」。结构清晰、观点中肯、语言自然、可读性强。帖子为匿名内容，含口语与情绪表达，需客观提炼而非照搬。对明显不实或极端信息，理性提示不扩散。";
+  const user = `以下是北京大学树洞上周（${startStr} 至 ${endStr}）的 ${rows.length} 条帖子（已过滤无意义内容）。${sampleNote}
+
+${formatPostsBlock(rows)}
+
+请撰写一份面向全体用户的「树洞周报」，使用 Markdown 格式，严格包含以下结构：
+
+## 一、本周热点回顾
+按主题分类归纳上周最受关注的讨论，每个主题用 1-2 段详述，概括帖子实际内容，并在每条信息后标注来源洞号，格式「(#pid)」。
+
+## 二、值得关注的时事
+上周与校园政策、社会热点、新闻事件相关的内容；如无明显时事，说明话题以日常为主并简述倾向。
+
+## 三、实用信息汇总
+对北大学生有实际参考价值的信息（如选课、考试、活动、招聘、生活服务等），逐条列出并标注来源洞号「(#pid)」。
+
+## 四、社区情绪与氛围
+分析上周整体情绪基调，引用代表性帖子洞号佐证。
+
+## 五、本周小结
+2-3 句话概括上周树洞趋势。
+
+要求：
+- 全程中文，客观不编造帖子中不存在的内容
+- 所有实质性内容必须标注来源洞号「(#pid)」，不得虚构洞号
+- 概括实际内容，不要只列编号
+- 篇幅充实，重点突出，避免空话套话，适合一般用户快速阅读`;
+  return { system, user };
+}
+
+/**
+ * 生成上周树洞周报并入库（幂等：同一周只生成一次）。
+ * 由定时器每周一凌晨触发，启动时也会补跑漏掉的最近一周。
+ */
+async function generateWeeklyReport() {
+  await ensureDb();
+  const { week_start, week_end } = lastWeekRangeShanghai();
+  // 幂等：该周周报已存在则跳过
+  if (queryOne("SELECT id FROM weekly_reports WHERE week_start = ?", [week_start])) {
+    console.log(`[weekly] 上周周报已存在 (week_start=${week_start})，跳过生成`);
+    return;
+  }
+  const rows = queryAll(
+    "SELECT pid, text, timestamp, likenum, reply, COALESCE(deleted,0) as deleted FROM holes WHERE timestamp >= ? AND timestamp < ? ORDER BY pid ASC",
+    [week_start, week_end]
+  );
+  if (!rows.length) { console.log("[weekly] 上周无帖子，跳过周报生成"); return; }
+  const useful = filterUseful(rows);
+  if (!useful.length) { console.log("[weekly] 上周无有效帖子，跳过周报生成"); return; }
+  const { posts, sampled } = sampleForLlm(useful);
+  const promptData = buildWeeklyReportPrompt(posts, week_start, week_end, useful.length, sampled);
+  console.log(`[weekly] 开始生成周报：上周有效帖 ${useful.length} 条，传入 ${posts.length} 条`);
+  try {
+    const content = await callLlm(promptData.system, promptData.user, "minimax", null, "system-weekly");
+    const enriched = enrichReport(content);
+    db.prepare(
+      "INSERT INTO weekly_reports (week_start, week_end, content, created_at) VALUES (?,?,?,?)"
+    ).run(week_start, week_end, enriched, Math.floor(Date.now() / 1000));
+    console.log(`[weekly] 周报生成成功并入库 (week_start=${week_start})`);
+  } catch (e) {
+    console.error(`[weekly] 周报生成失败: ${e.message}`);
+  }
+}
+
+/** 返回最新一期树洞周报（供前端展示） */
+function handleWeeklyReport() {
+  const row = queryOne(
+    "SELECT week_start, week_end, content, created_at FROM weekly_reports ORDER BY week_start DESC LIMIT 1"
+  );
+  if (!row) return { available: false };
+  return { available: true, week_start: row.week_start, week_end: row.week_end, content: row.content, created_at: row.created_at };
 }
 
 /** 返回所有支持的 LLM provider 及其预设模型列表（public=true 表示服务器已配置 Key，可直接使用） */
@@ -1629,6 +1746,9 @@ async function scanAndNotify() {
 async function sendSubscriptionDigest(toEmail, userEmail, posts) {
   const overflow = posts.length > SUB_DIGEST_MAX_POSTS;
   const showPosts = posts.slice(0, SUB_DIGEST_MAX_POSTS);
+  // 汇总本次命中的所有关键词，用于邮件标题
+  const allKws = [...new Set(posts.flatMap(p => p.keywords || []))].slice(0, 3);
+  const kwLabel = allKws.length ? allKws.map(k => `「${k}」`).join("") : "";
   const items = showPosts.map(p => {
     const time = p.timestamp ? new Date(p.timestamp * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
     const summary = (p.text || "").slice(0, 120).replace(/\s+/g, " ");
@@ -1665,7 +1785,7 @@ async function sendSubscriptionDigest(toEmail, userEmail, posts) {
   await getMailer().sendMail({
     from: MAIL_FROM,
     to: toEmail,
-    subject: `关键词订阅 · ${posts.length} 条新帖匹配`,
+    subject: `关键词订阅 ${kwLabel}· ${posts.length} 条新帖匹配`,
     html,
   });
 }
@@ -1965,7 +2085,16 @@ const server = http.createServer(async (req, res) => {
       if (!rateLimit(ip, true)) { alertAdmin("warn", "rate_limit", "AI 报告接口触发频率限制", `路由: /api/report`, ip); sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 2 次、每天 15 次；全局每天 200 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
-      sendJson(res, 200, await handleReport(body, ip));
+      try {
+        sendJson(res, 200, await handleReport(body, ip));
+      } catch (e) {
+        // QUOTA 错误：模型限额/繁忙，返回友好提示 + code 标记供前端识别
+        if (e && e.code === "QUOTA") {
+          sendJson(res, 503, { error: e.message, code: "QUOTA" });
+        } else {
+          sendError(res, 500, e.message);
+        }
+      }
       return;
     }
 
@@ -1986,6 +2115,15 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       sendJson(res, 200, handleReportEnrich(body));
+      return;
+    }
+
+    // 树洞周报（每周一自动生成，所有用户可读，只读缓存）
+    if (route === "report/weekly") {
+      if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      await ensureDb();
+      sendJson(res, 200, handleWeeklyReport());
       return;
     }
 
@@ -2307,6 +2445,16 @@ setInterval(checkTokenAndWarn, 6 * 3600_000);
 // 注意：ensureDb() 是同步函数（返回 db，非 Promise），不能链式调用 .then
 setTimeout(() => { try { ensureDb(); scanAndNotify(); } catch (e) { console.error("[subscribe] 启动扫描失败:", e.message); } }, 60_000);
 setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscribe] 定时扫描异常:", e.message); } }, SUB_SCAN_INTERVAL_MS);
+
+// ==================== 树洞周报定时器 ====================
+// 启动后 3 分钟补跑（幂等，已存在则跳过），之后每小时检查一次，命中每周一 04:00（上海时间）则生成
+setTimeout(() => { generateWeeklyReport().catch(e => console.error("[weekly] 启动补跑失败:", e.message)); }, 180_000);
+setInterval(() => {
+  const sh = new Date(Date.now() + 8 * 3600_000); // 上海墙上时间
+  if (sh.getUTCDay() === 1 && sh.getUTCHours() === 4) {
+    generateWeeklyReport().catch(e => console.error("[weekly] 定时生成失败:", e.message));
+  }
+}, 3600_000);
 
 // HTTP 服务器入口：监听指定端口
 // 仅监听 127.0.0.1，公网通过 Nginx 反代访问，禁止绕过 Nginx 直连 9000
