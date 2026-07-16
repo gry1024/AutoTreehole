@@ -227,6 +227,10 @@ select.input{
   color:#fff;border-color:var(--danger);
 }
 .btn-danger:hover{background:#E0342A;border-color:#E0342A}
+.btn-sm{padding:5px 12px;font-size:12px;line-height:18px;border-radius:var(--radius-sm);}
+.weekly-subscribe-btn{min-width:72px;transition:background .2s,border-color .2s,color .2s;}
+.weekly-subscribe-btn.subscribed{background:none;color:var(--fg-secondary);border-color:var(--divider);}
+.weekly-subscribe-btn.subscribed:hover{background:var(--bg-hover);color:var(--fg);}
 
 /* 卡片 · 打破：去除背景、边框、阴影 */
 .card{
@@ -1872,7 +1876,10 @@ mark{
             树洞周报
           </div>
         </div>
-        <div class="weekly-report-meta" id="weeklyReportMeta"></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+          <button class="btn btn-primary btn-sm weekly-subscribe-btn" id="weeklySubscribeBtn" style="display:none">+ 订阅</button>
+          <div class="weekly-report-meta" id="weeklyReportMeta"></div>
+        </div>
       </div>
       <div id="weeklyReportBody" class="weekly-cards">
         <div style="grid-column:1/-1;text-align:center;padding:20px 24px;color:var(--fg-secondary)">
@@ -3232,6 +3239,7 @@ async function loadWeeklyReport(){
         <div style="font-size:13px;font-weight:300">本周周报尚未生成，将于每周一自动更新</div>
       </div>`;
       meta.textContent = '';
+      loadWeeklySubscribeStatus();
       return;
     }
     meta.textContent = `共 ${data.reports.length} 期 · 每周一自动更新`;
@@ -3245,10 +3253,71 @@ async function loadWeeklyReport(){
     body.querySelectorAll('.weekly-card').forEach(card => {
       card.addEventListener('click', () => openWeeklyReport(card.dataset.ws));
     });
+    loadWeeklySubscribeStatus();
   }catch(e){
     body.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px 24px;color:var(--fg-secondary)">
       <div style="font-size:13px;font-weight:300">周报加载失败，请稍后刷新重试</div>
     </div>`;
+  }
+}
+
+let weeklySubState = { loggedIn: false, subscribed: false };
+
+async function loadWeeklySubscribeStatus(){
+  const btn = document.getElementById('weeklySubscribeBtn');
+  if(!btn) return;
+  try{
+    const data = await api('/weekly-report/status', {method:'GET'});
+    weeklySubState = data || { loggedIn: false, subscribed: false };
+    renderWeeklySubscribeBtn();
+  }catch(e){
+    btn.style.display = 'none';
+  }
+}
+
+function renderWeeklySubscribeBtn(){
+  const btn = document.getElementById('weeklySubscribeBtn');
+  if(!btn) return;
+  if(!weeklySubState.loggedIn){
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'inline-flex';
+  if(weeklySubState.subscribed){
+    btn.textContent = '已订阅';
+    btn.classList.add('subscribed');
+    btn.title = '点击取消周报邮件订阅';
+  }else{
+    btn.textContent = '+ 订阅';
+    btn.classList.remove('subscribed');
+    btn.title = '每周一生成周报后自动邮件推送';
+  }
+  btn.onclick = toggleWeeklySubscribe;
+}
+
+async function toggleWeeklySubscribe(){
+  const btn = document.getElementById('weeklySubscribeBtn');
+  if(!btn || btn.disabled) return;
+  if(!weeklySubState.loggedIn){
+    toast('请先登录');
+    return;
+  }
+  btn.disabled = true;
+  try{
+    if(weeklySubState.subscribed){
+      await api('/weekly-report/unsubscribe', {method:'POST'});
+      weeklySubState.subscribed = false;
+      toast('已取消周报订阅');
+    }else{
+      await api('/weekly-report/subscribe', {method:'POST'});
+      weeklySubState.subscribed = true;
+      toast('已订阅树洞周报');
+    }
+    renderWeeklySubscribeBtn();
+  }catch(e){
+    toast(e.message || '操作失败');
+  }finally{
+    btn.disabled = false;
   }
 }
 

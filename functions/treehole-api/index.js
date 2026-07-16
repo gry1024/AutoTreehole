@@ -513,6 +513,16 @@ function ensureDb() {
       created_at INTEGER NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_weekly_reports_start ON weekly_reports(week_start);
+
+    -- 树洞周报邮件订阅：每周一生成周报后自动发送给订阅用户
+    CREATE TABLE IF NOT EXISTS weekly_report_subscriptions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email  TEXT NOT NULL,
+      notify_email TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      UNIQUE(user_email)
+    );
+    CREATE INDEX IF NOT EXISTS idx_weekly_report_subs_user ON weekly_report_subscriptions(user_email);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -1024,6 +1034,9 @@ async function generateWeeklyReport() {
       "INSERT INTO weekly_reports (week_start, week_end, content, created_at) VALUES (?,?,?,?)"
     ).run(week_start, week_end, enriched, Math.floor(Date.now() / 1000));
     console.log(`[weekly] 周报生成成功并入库 (week_start=${week_start})`);
+    // 异步推送给订阅者，失败不影响主流程
+    const reportRow = { week_start, week_end, content: enriched };
+    sendWeeklyReportToSubscribers(reportRow).catch(e => console.error("[weekly] 订阅邮件发送失败:", e.message));
   } catch (e) {
     console.error(`[weekly] 周报生成失败: ${e.message}`);
   }
@@ -1060,6 +1073,91 @@ function handleWeeklyReport(query) {
     };
   });
   return { available: true, reports };
+}
+
+// ==================== 树洞周报邮件订阅 ====================
+
+function handleWeeklyReportSubStatus(req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) return { loggedIn: false, subscribed: false };
+  const email = payload.email;
+  const row = queryOne("SELECT id FROM weekly_report_subscriptions WHERE user_email = ?", [email]);
+  return { loggedIn: true, subscribed: !!row };
+}
+
+function handleWeeklyReportSubscribe(req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  // 邀请码为一次性凭证，不具备周报订阅资格（仅校园邮箱登录用户可订阅）
+  if (isInviteUser(email)) throw new Error("周报订阅仅对校园邮箱登录用户开放");
+  const notifyEmail = email;
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    db.prepare("INSERT INTO weekly_report_subscriptions (user_email, notify_email, created_at) VALUES (?, ?, ?)")
+      .run(email, notifyEmail, now);
+  } catch (e) {
+    if (String(e.message).includes("UNIQUE")) throw new Error("你已经订阅了周报");
+    throw e;
+  }
+  return { success: true };
+}
+
+function handleWeeklyReportUnsubscribe(req) {
+  const payload = verifyToken(getCookie(req, "treehole_token"));
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  db.prepare("DELETE FROM weekly_report_subscriptions WHERE user_email = ?").run(email);
+  return { success: true };
+}
+
+async function sendWeeklyReportToSubscribers(report) {
+  if (!db) return;
+  try {
+    const subs = queryAll("SELECT user_email, notify_email FROM weekly_report_subscriptions");
+    if (!subs.length) {
+      console.log("[weekly] 无周报订阅用户，跳过邮件发送");
+      return;
+    }
+    const weekRange = `${fmtTime(report.week_start).slice(0, 10)} ~ ${fmtTime(report.week_end - 1).slice(0, 10)}`;
+    const siteLink = PUBLIC_BASE_URL
+      ? `<a href="${PUBLIC_BASE_URL}/" style="color:#86868B;">前往 AutoTreehole 阅读全文</a>`
+      : `<span style="color:#86868B;">前往 AutoTreehole 阅读全文</span>`;
+    const plainSummary = (report.content || "")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/[#*`>\[\]()_]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240);
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
+      <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:6px;">树洞周报 · ${esc(weekRange)}</h2>
+      <p style="color:#86868B;font-size:12px;margin-bottom:20px;">本周树洞周报已生成，为你自动推送。</p>
+      <div style="background:#fff;border-radius:8px;padding:20px 24px;margin-bottom:16px;">
+        <p style="color:#1D1D1F;font-size:14px;line-height:1.8;margin:0;">${esc(plainSummary)}……</p>
+      </div>
+      <p style="color:#86868B;font-size:11px;margin-top:20px;text-align:center;">
+        ${siteLink}
+      </p>
+      <p style="color:#86868B;font-size:11px;margin-top:12px;text-align:center;">
+        如需取消订阅，请在网站「AI 报告」页点击「已订阅」按钮退订。
+      </p>
+    </div>`;
+    for (const sub of subs) {
+      try {
+        await getMailer().sendMail({
+          from: MAIL_FROM,
+          to: sub.notify_email,
+          subject: `树洞周报 · ${weekRange}`,
+          html,
+        });
+        console.log(`[weekly] 已发送周报到 ${sub.notify_email}`);
+      } catch (e) {
+        console.error(`[weekly] 发送周报邮件失败 ${sub.notify_email}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.error(`[weekly] 发送周报邮件异常: ${e.message}`);
+  }
 }
 
 /** 返回所有支持的 LLM provider 及其预设模型列表（public=true 表示服务器已配置 Key，可直接使用） */
@@ -2209,6 +2307,35 @@ const server = http.createServer(async (req, res) => {
       if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       sendJson(res, 200, handleWeeklyReport(query));
+      return;
+    }
+
+    // 树洞周报邮件订阅状态（未登录也可查询，用于前端展示按钮状态）
+    if (route === "weekly-report/status") {
+      if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      sendJson(res, 200, handleWeeklyReportSubStatus(req));
+      return;
+    }
+    if (route === "weekly-report/subscribe") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      try {
+        sendJson(res, 200, handleWeeklyReportSubscribe(req));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "weekly-report/unsubscribe") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      try {
+        sendJson(res, 200, handleWeeklyReportUnsubscribe(req));
+      } catch (e) { sendError(res, 400, e.message); }
       return;
     }
 
