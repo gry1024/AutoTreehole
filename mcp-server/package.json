@@ -1,0 +1,17 @@
+{
+  "name": "autothole-mcp",
+  "version": "1.0.0",
+  "description": "AutoTreehole MCP Server — 让 Claude Code / Cursor / Codex 等 AI 助手直接查询北大树洞",
+  "bin": {
+    "autothole-mcp": "index.js"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "keywords": ["mcp", "treehole", "pku", "claude", "ai"],
+  "license": "MIT"
+}

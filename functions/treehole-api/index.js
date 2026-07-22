@@ -59,6 +59,14 @@ const GLOBAL_REPORT_LIMIT_PER_DAY = 200;
 const IP_DAILY_REPORT_LIMIT = 15;
 const DAY_MS = 86_400_000;
 
+// Agent 接入：个人 API Token 限流（独立桶，按 token）
+const AGENT_RATE_PER_MIN = 20;    // 每 token 每分钟
+const AGENT_RATE_PER_DAY = 500;   // 每 token 每天
+const AGENT_GLOBAL_PER_MIN = 60;  // 全局每分钟（保护小机器）
+const AGENT_MAX_TOKENS_PER_USER = 3;  // 每账号最多 Token 数
+const AGENT_LIST_LIMIT = 30;      // 列表接口单次最大返回数
+const AGENT_DIGEST_DEFAULT_DAYS = 3;  // digest 默认回看天数
+
 // 输入限制
 const MAX_KEYWORD_LEN = 80;
 const MAX_LIMIT = 100;
@@ -86,6 +94,9 @@ const LLM_PROVIDERS = {
 
 // ==================== 频率限制 ====================
 const rateBuckets = new Map();
+// Agent Token 限流桶：token_hash -> { min:[ts], day:[ts] }
+const agentRateBuckets = new Map();
+let agentGlobalMin = []; // 全局每分钟计数
 // 全局报告计数（分钟级 + 日级）
 let globalReportMin = [];
 let globalReportDay = [];
@@ -183,6 +194,38 @@ setInterval(() => {
     const dayEmpty = (!b.reportDay || b.reportDay.every((t) => now - t >= DAY_MS));
     if (normalEmpty && reportEmpty && dayEmpty) {
       rateBuckets.delete(ip);
+    }
+  }
+}, RATE_WINDOW_MS);
+
+/**
+ * Agent Token 限流（独立桶，按 token_hash 计量）
+ * @returns {boolean} true=允许，false=超限
+ */
+function agentRateLimit(tokenHash) {
+  const now = Date.now();
+  let b = agentRateBuckets.get(tokenHash);
+  if (!b) { b = { min: [], day: [] }; agentRateBuckets.set(tokenHash, b); }
+  // 每 token 每分钟
+  b.min = b.min.filter((t) => now - t < RATE_WINDOW_MS);
+  if (b.min.length >= AGENT_RATE_PER_MIN) return false;
+  // 每 token 每天
+  b.day = b.day.filter((t) => now - t < DAY_MS);
+  if (b.day.length >= AGENT_RATE_PER_DAY) return false;
+  // 全局每分钟
+  agentGlobalMin = agentGlobalMin.filter((t) => now - t < RATE_WINDOW_MS);
+  if (agentGlobalMin.length >= AGENT_GLOBAL_PER_MIN) return false;
+  // 通过，记录
+  b.min.push(now); b.day.push(now); agentGlobalMin.push(now);
+  return true;
+}
+
+// 清理 Agent 限流桶
+setInterval(() => {
+  const now = Date.now();
+  for (const [h, b] of agentRateBuckets) {
+    if (b.min.every((t) => now - t >= RATE_WINDOW_MS) && b.day.every((t) => now - t >= DAY_MS)) {
+      agentRateBuckets.delete(h);
     }
   }
 }, RATE_WINDOW_MS);
@@ -523,6 +566,20 @@ function ensureDb() {
       UNIQUE(user_email)
     );
     CREATE INDEX IF NOT EXISTS idx_weekly_report_subs_user ON weekly_report_subscriptions(user_email);
+
+    -- Agent 接入：用户个人 API Token（仅 PKU 邮箱用户可用）
+    CREATE TABLE IF NOT EXISTS agent_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,   -- 存 SHA-256 hash，不存明文
+      label TEXT DEFAULT '',
+      last_used_at INTEGER DEFAULT 0,
+      call_count INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      revoked_at INTEGER DEFAULT 0       -- 0=有效，>0=已撤销
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_email);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -1303,6 +1360,242 @@ function requireAuth(req) {
   const user = queryOne("SELECT pledged FROM users WHERE email = ?", [payload.email]);
   if (!user || !user.pledged) return null;
   return payload.email;
+}
+
+// ==================== Agent 接入 ====================
+
+/** 生成 Agent API Token 明文：ath_<22位 base64url 随机> */
+function generateAgentToken() {
+  return "ath_" + crypto.randomBytes(16).toString("base64url").slice(0, 22);
+}
+
+/** Token 明文 → SHA-256 hash（只存 hash） */
+function hashAgentToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/** 邀请码用户不开放 Agent 功能 */
+function canUseAgent(user_email) {
+  return !!(user_email && !user_email.startsWith("invite:"));
+}
+
+/**
+ * Agent 接口 Bearer Token 鉴权
+ * @returns {{email:string, tokenId:number, tokenHash:string}|null}
+ */
+function authAgent(req) {
+  const auth = req.headers["authorization"] || "";
+  const m = auth.match(/^Bearer\s+(ath_\S+)$/i);
+  if (!m) return null;
+  const tokenHash = hashAgentToken(m[1]);
+  const row = queryOne(
+    "SELECT id, user_email, revoked_at FROM agent_tokens WHERE token_hash = ?", [tokenHash]
+  );
+  if (!row || row.revoked_at > 0) return null;
+  if (!canUseAgent(row.user_email)) return null;
+  // 异步更新使用统计（不阻塞响应）
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    db.prepare("UPDATE agent_tokens SET last_used_at = ?, call_count = call_count + 1 WHERE id = ?")
+      .run(now, row.id);
+  } catch (e) { /* ignore */ }
+  return { email: row.user_email, tokenId: row.id, tokenHash };
+}
+
+/** 帖子列表字段精简（正文截断 140 字，省 Agent token） */
+function slimPost(p) {
+  const text = (p.text || "").replace(/[\x00-\x1f\x7f]/g, "").trim();
+  return {
+    pid: p.pid,
+    timestamp: p.timestamp,
+    category: p.category || p.type || "其他",
+    preview: text.slice(0, 140),
+    likenum: p.likenum,
+    reply: p.reply,
+  };
+}
+
+/** Agent 查询函数：最新帖 */
+function agentLatest(limit) {
+  return queryAll(
+    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes ORDER BY pid DESC LIMIT ?",
+    [limit]
+  ).map(slimPost);
+}
+
+/** Agent 查询函数：热帖 */
+function agentHot(days, limit) {
+  const since = Math.floor(Date.now() / 1000) - days * 86400;
+  return queryAll(
+    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    [since, limit]
+  ).map(slimPost);
+}
+
+/** Agent 查询函数：搜索 */
+function agentSearch(keyword, limit) {
+  const like = `%${keyword}%`;
+  return queryAll(
+    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE text LIKE ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    [like, limit]
+  ).map(slimPost);
+}
+
+/** Agent 查询函数：帖子详情（含评论全文） */
+function agentPost(pid) {
+  const post = queryOne(
+    "SELECT pid, text, type, timestamp, reply, likenum, tag, COALESCE(category,'其他') as category FROM holes WHERE pid = ?",
+    [pid]
+  );
+  if (!post) return null;
+  const comments = queryAll(
+    "SELECT cid, text, timestamp, name, comment_id, quote FROM comments WHERE pid = ? ORDER BY cid ASC",
+    [pid]
+  ).map((c) => ({
+    cid: c.cid,
+    timestamp: c.timestamp,
+    name: c.name,
+    text: (c.text || "").replace(/[\x00-\x1f\x7f]/g, ""),
+    quote: c.quote || null,
+  }));
+  return {
+    post: {
+      pid: post.pid,
+      timestamp: post.timestamp,
+      category: post.category,
+      text: (post.text || "").replace(/[\x00-\x1f\x7f]/g, ""),
+      likenum: post.likenum,
+      reply: post.reply,
+    },
+    comments,
+  };
+}
+
+/** Agent 查询函数：周报列表 */
+function agentWeeklyList() {
+  const rows = queryAll(
+    "SELECT week_start, week_end, content, created_at FROM weekly_reports ORDER BY week_start DESC"
+  );
+  return rows.map((r) => {
+    const plain = (r.content || "")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/[#*`>\[\]()_]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return {
+      week_start: r.week_start,
+      week_end: r.week_end,
+      created_at: r.created_at,
+      summary: plain.slice(0, 200),
+      content: r.content,
+    };
+  });
+}
+
+/** Agent 查询函数：单期周报 */
+function agentWeeklyOne(weekStart) {
+  return queryOne(
+    "SELECT week_start, week_end, content, created_at FROM weekly_reports WHERE week_start = ?",
+    [weekStart]
+  );
+}
+
+/** Agent 查询函数：增量摘要（自某时间点以来的热帖+新帖+周报），模拟全局记忆 */
+function agentDigest(sinceTs) {
+  const since = sinceTs || (Math.floor(Date.now() / 1000) - AGENT_DIGEST_DEFAULT_DAYS * 86400);
+  const newPosts = queryAll(
+    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE timestamp >= ? ORDER BY pid DESC LIMIT ?",
+    [since, AGENT_LIST_LIMIT]
+  ).map(slimPost);
+  const hotPosts = queryAll(
+    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    [since, AGENT_LIST_LIMIT]
+  ).map(slimPost);
+  const weekly = queryAll(
+    "SELECT week_start, week_end, created_at FROM weekly_reports WHERE created_at >= ? ORDER BY week_start DESC",
+    [since]
+  ).map((r) => ({ week_start: r.week_start, week_end: r.week_end, created_at: r.created_at }));
+  return {
+    since,
+    server_time: Math.floor(Date.now() / 1000),
+    new_posts: newPosts,
+    hot_posts: hotPosts,
+    weekly_reports: weekly,
+  };
+}
+
+/** Agent 统一 JSON 响应 */
+function agentJson(res, status, data) {
+  const body = JSON.stringify(data);
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+  });
+  res.end(body);
+}
+
+/** Agent 统一错误响应 */
+function agentError(res, status, error, message) {
+  agentJson(res, status, { ok: false, error, message, server_time: Math.floor(Date.now() / 1000) });
+}
+
+/** Agent Token 管理：列出当前用户的有效 Token（不含明文） */
+function handleAgentTokenList(email) {
+  const rows = queryAll(
+    "SELECT id, label, created_at, last_used_at, call_count FROM agent_tokens WHERE user_email = ? AND revoked_at = 0 ORDER BY created_at DESC",
+    [email]
+  );
+  return { ok: true, tokens: rows };
+}
+
+/** Agent Token 管理：创建新 Token，返回明文一次 */
+function handleAgentTokenCreate(email, label) {
+  if (!canUseAgent(email)) throw new Error("此功能仅校园邮箱用户可用");
+  const count = queryOne(
+    "SELECT COUNT(*) as c FROM agent_tokens WHERE user_email = ? AND revoked_at = 0", [email]
+  ).c;
+  if (count >= AGENT_MAX_TOKENS_PER_USER) {
+    throw new Error(`每个账号最多 ${AGENT_MAX_TOKENS_PER_USER} 个 Token`);
+  }
+  const cleanLabel = (label || "").trim().slice(0, 20);
+  const plain = generateAgentToken();
+  const hash = hashAgentToken(plain);
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    "INSERT INTO agent_tokens (user_email, token_hash, label, created_at) VALUES (?,?,?,?)"
+  ).run(email, hash, cleanLabel, now);
+  return { ok: true, token: plain, label: cleanLabel, config_snippet: buildMcpConfig(plain) };
+}
+
+/** Agent Token 管理：撤销 */
+function handleAgentTokenRevoke(email, tokenId) {
+  const row = queryOne(
+    "SELECT id FROM agent_tokens WHERE id = ? AND user_email = ? AND revoked_at = 0",
+    [tokenId, email]
+  );
+  if (!row) throw new Error("Token 不存在或已撤销");
+  db.prepare("UPDATE agent_tokens SET revoked_at = ? WHERE id = ?")
+    .run(Math.floor(Date.now() / 1000), tokenId);
+  return { ok: true };
+}
+
+/** 生成 MCP 配置片段（站点地址取自 PUBLIC_BASE_URL，不硬编码 IP） */
+function buildMcpConfig(token) {
+  return {
+    mcpServers: {
+      autothole: {
+        command: "npx",
+        args: ["-y", "autothole-mcp"],
+        env: {
+          AUTOTREEHOLE_URL: PUBLIC_BASE_URL || "",
+          AUTOTREEHOLE_TOKEN: token,
+        },
+      },
+    },
+  };
 }
 
 // ==================== 认证 API ====================
@@ -2414,6 +2707,108 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 200, await handlePublicMessage(body, req));
       } catch (e) { sendError(res, 400, e.message); }
       return;
+    }
+
+    // ==================== Agent 接入 ====================
+    // Token 管理（Cookie 鉴权，需登录）
+    if (route === "agent/token/list") {
+      await ensureDb();
+      const email = requireAuth(req);
+      if (!email) { sendError(res, 401, "请先登录"); return; }
+      sendJson(res, 200, handleAgentTokenList(email));
+      return;
+    }
+    if (route === "agent/token/create") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      const email = requireAuth(req);
+      if (!email) { sendError(res, 401, "请先登录"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      try {
+        sendJson(res, 200, handleAgentTokenCreate(email, body.label));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "agent/token/revoke") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      const email = requireAuth(req);
+      if (!email) { sendError(res, 401, "请先登录"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      try {
+        sendJson(res, 200, handleAgentTokenRevoke(email, parseInt(body.id, 10)));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+
+    // Agent 只读查询接口（Bearer Token 鉴权，独立限流）
+    if (route.startsWith("agent/") && !route.startsWith("agent/token/")) {
+      await ensureDb();
+      const auth = authAgent(req);
+      if (!auth) { agentError(res, 401, "invalid_token", "Token 无效或已撤销"); return; }
+      if (!agentRateLimit(auth.tokenHash)) {
+        alertAdmin("warn", "rate_limit", "Agent 接口触发频率限制", `用户: ${auth.email}\n路由: /api/${route}`, ip);
+        agentError(res, 429, "rate_limited", "请求过于频繁，请稍后再试");
+        return;
+      }
+      try {
+        const server_time = Math.floor(Date.now() / 1000);
+        if (route === "agent/latest") {
+          const limit = Math.min(Math.max(parseInt(query.limit, 10) || 15, 1), AGENT_LIST_LIMIT);
+          agentJson(res, 200, { ok: true, server_time, data: { posts: agentLatest(limit) } });
+          return;
+        }
+        if (route === "agent/hot") {
+          const days = Math.min(Math.max(parseInt(query.days, 10) || 7, 1), 14);
+          const limit = Math.min(Math.max(parseInt(query.limit, 10) || 15, 1), AGENT_LIST_LIMIT);
+          agentJson(res, 200, { ok: true, server_time, data: { posts: agentHot(days, limit) } });
+          return;
+        }
+        if (route === "agent/search") {
+          const keyword = (query.keyword || "").toString().replace(/[\x00-\x1f\x7f]/g, "").trim();
+          if (!keyword) { agentError(res, 400, "bad_request", "keyword 不能为空"); return; }
+          if (keyword.length > MAX_KEYWORD_LEN) { agentError(res, 400, "bad_request", `关键词最长 ${MAX_KEYWORD_LEN} 字`); return; }
+          const limit = Math.min(Math.max(parseInt(query.limit, 10) || 15, 1), AGENT_LIST_LIMIT);
+          agentJson(res, 200, { ok: true, server_time, data: { posts: agentSearch(keyword, limit) } });
+          return;
+        }
+        if (route.startsWith("agent/post/")) {
+          const pid = parseInt(route.split("/")[2], 10);
+          if (!pid) { agentError(res, 400, "bad_request", "pid 无效"); return; }
+          const result = agentPost(pid);
+          if (!result) { agentError(res, 404, "not_found", "帖子不存在"); return; }
+          agentJson(res, 200, { ok: true, server_time, data: result });
+          return;
+        }
+        if (route === "agent/weekly") {
+          agentJson(res, 200, { ok: true, server_time, data: { reports: agentWeeklyList() } });
+          return;
+        }
+        if (route.startsWith("agent/weekly/")) {
+          const ws = parseInt(route.split("/")[2], 10);
+          if (!ws) { agentError(res, 400, "bad_request", "week_start 无效"); return; }
+          const row = agentWeeklyOne(ws);
+          if (!row) { agentError(res, 404, "not_found", "周报不存在"); return; }
+          agentJson(res, 200, { ok: true, server_time, data: row });
+          return;
+        }
+        if (route === "agent/digest") {
+          // since 支持时间戳(秒)或天数(<=365)
+          let sinceTs = null;
+          if (query.since) {
+            const s = parseFloat(query.since);
+            sinceTs = s <= 365 ? Math.floor(Date.now() / 1000) - s * 86400 : Math.floor(s);
+          }
+          agentJson(res, 200, { ok: true, data: agentDigest(sinceTs) });
+          return;
+        }
+        agentError(res, 404, "not_found", `未知 Agent 路由: /api/${route}`);
+        return;
+      } catch (e) {
+        alertAdmin("error", "server_error", `Agent 接口错误: ${e.message.slice(0, 80)}`, `路由: /api/${route}\n堆栈: ${e.stack || e.message}`, ip);
+        agentError(res, 500, "server_error", e.message);
+        return;
+      }
     }
 
     // 数据上报接口（需要令牌）

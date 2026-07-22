@@ -949,6 +949,42 @@ mark{
 
 /* 周报全文页（沿用全局 .markdown 衬线排版，仅微调间距） */
 #panel-weekly .markdown{max-width:none;}
+
+/* ==================== MCP 页面 ==================== */
+.mcp-wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px;}
+.mcp-hero{text-align:center;margin-bottom:56px;}
+.mcp-title{font-size:32px;font-weight:600;color:var(--fg);letter-spacing:-0.02em;margin:0 0 16px;}
+.mcp-sub{font-size:15px;line-height:1.8;color:var(--fg-secondary);max-width:560px;margin:0 auto;}
+.mcp-section{margin-bottom:56px;}
+.mcp-h{font-size:18px;font-weight:600;color:var(--fg);margin:0 0 16px;letter-spacing:-0.01em;}
+.mcp-p{font-size:14px;line-height:1.8;color:var(--fg-secondary);margin:0 0 16px;}
+.mcp-list{margin:0 0 0 20px;padding:0;font-size:14px;line-height:2;color:var(--fg-secondary);}
+.mcp-steps{line-height:2.2;}
+.mcp-steps code{background:var(--bg-card);padding:2px 6px;border-radius:4px;font-size:13px;color:var(--fg);}
+.mcp-forbid{padding:20px;border:1px solid var(--border);border-radius:8px;color:var(--fg-secondary);font-size:14px;text-align:center;}
+.mcp-token-create{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+.mcp-table{width:100%;border-collapse:collapse;font-size:13px;}
+.mcp-table th{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--fg-secondary);font-weight:400;font-size:12px;}
+.mcp-table td{padding:12px;border-bottom:1px solid var(--border);color:var(--fg);vertical-align:top;}
+.mcp-table tr:last-child td{border-bottom:none;}
+.mcp-revoke{color:var(--danger);cursor:pointer;background:none;border:none;font-size:13px;padding:4px 8px;}
+.mcp-revoke:hover{text-decoration:underline;}
+.mcp-config-block{position:relative;margin-top:16px;}
+.mcp-config-block pre{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:12px;line-height:1.7;overflow-x:auto;margin:0 0 12px;font-family:var(--font-mono);}
+.mcp-examples{display:flex;flex-direction:column;gap:10px;}
+.mcp-example{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 16px;border:1px solid var(--border);border-radius:8px;flex-wrap:wrap;}
+.mcp-q{font-size:14px;color:var(--fg);}
+.mcp-tool{font-size:12px;color:var(--fg-secondary);font-family:var(--font-mono);background:var(--bg-card);padding:2px 8px;border-radius:4px;}
+.mcp-faq{display:flex;flex-direction:column;gap:16px;}
+.mcp-faq-item{padding:16px;border:1px solid var(--border);border-radius:8px;}
+.mcp-faq-q{display:block;font-size:14px;font-weight:500;color:var(--fg);margin-bottom:6px;}
+.mcp-faq-a{display:block;font-size:13px;line-height:1.7;color:var(--fg-secondary);}
+.mcp-modal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:24px;}
+.mcp-modal-card{background:#fff;border-radius:14px;padding:32px;max-width:560px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.12);}
+.mcp-modal-card h3{font-size:18px;font-weight:600;margin:0 0 8px;color:var(--fg);}
+.mcp-modal-card .mcp-warn{font-size:13px;color:var(--danger);margin:0 0 16px;}
+.mcp-modal-card pre{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:11px;line-height:1.6;overflow-x:auto;margin:0 0 16px;font-family:var(--font-mono);}
+.mcp-modal-actions{display:flex;gap:12px;justify-content:flex-end;}
 .report-controls{
   padding:0;display:flex;flex-direction:column;gap:20px;
   position:sticky;top:80px;
@@ -1759,6 +1795,7 @@ mark{
       <button class="tab-btn" data-panel="favorites">我的收藏</button>
       <button class="tab-btn" data-panel="subscribe">订阅推送</button>
       <button class="tab-btn" data-panel="detail">详情</button>
+      <button class="tab-btn" data-panel="mcp">MCP</button>
       <button class="tab-btn" data-panel="about">关于</button>
     </nav>
   </div>
@@ -2003,6 +2040,94 @@ mark{
   </section>
 
   <!-- ========== 关于 ========== -->
+  <section class="panel" id="panel-mcp">
+    <div class="mcp-wrap">
+      <div class="mcp-hero">
+        <h1 class="mcp-title">让 AI 帮你刷树洞</h1>
+        <p class="mcp-sub">AutoTreehole 支持把树洞数据接入 Claude Code、Cursor、Codex 等 AI 编程助手。你只需对 AI 说一句话，它就能自动帮你查询最新树洞、搜索关键词、阅读周报——你的智能体从此拥有对树洞的全局记忆。</p>
+      </div>
+
+      <div class="mcp-section">
+        <h3 class="mcp-h">准备工作</h3>
+        <p class="mcp-p">你需要：</p>
+        <ul class="mcp-list">
+          <li>一个支持 MCP 协议的 AI 客户端（Claude Code / Cursor / Codex 等）</li>
+          <li>北大校园邮箱认证账号（邀请码用户不可用）</li>
+        </ul>
+      </div>
+
+      <div class="mcp-section">
+        <h3 class="mcp-h">第一步 · 生成你的 Token</h3>
+        <p class="mcp-p">Token 是你的 Agent 访问树洞的凭证，每个账号最多 3 个。生成后请立即复制保存——明文仅展示这一次，遗失只能撤销重建。</p>
+        <div id="mcpTokenArea">
+          <div id="mcpTokenForbid" class="mcp-forbid" style="display:none">此功能仅校园邮箱用户可用。邀请码用户如需使用，请用校园邮箱重新注册。</div>
+          <div id="mcpTokenPanel">
+            <div class="mcp-token-create">
+              <input type="text" id="mcpTokenLabel" class="input" style="max-width:240px" placeholder="Token 标签，如：我的Claude Code" maxlength="20">
+              <button class="btn btn-primary" id="mcpTokenCreateBtn">新建 Token</button>
+            </div>
+            <table class="mcp-table" id="mcpTokenTable" style="margin-top:20px">
+              <thead><tr><th>标签</th><th>创建时间</th><th>最近使用</th><th>调用次数</th><th>操作</th></tr></thead>
+              <tbody id="mcpTokenBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="mcp-section">
+        <h3 class="mcp-h">第二步 · 配置你的 AI 助手</h3>
+        <p class="mcp-p">将下方配置片段粘贴到你的 AI 客户端设置中（Token 会自动填入）。以 Claude Code 为例：</p>
+        <ol class="mcp-list mcp-steps">
+          <li>新建 Token 后，在弹窗中复制完整配置片段</li>
+          <li>打开 Claude Code 配置文件（通常在 <code>~/.claude/claude_desktop_config.json</code> 或对应客户端的 MCP 设置）</li>
+          <li>粘贴配置片段，保存</li>
+          <li>重启客户端，确认 autothole 服务已连接</li>
+        </ol>
+        <div class="mcp-config-block" id="mcpConfigBlock" style="display:none">
+          <pre id="mcpConfigPre"></pre>
+          <button class="btn" id="mcpConfigCopy">复制配置</button>
+        </div>
+      </div>
+
+      <div class="mcp-section">
+        <h3 class="mcp-h">第三步 · 开始使用</h3>
+        <p class="mcp-p">配置完成后，直接用自然语言向你的 AI 提问即可。它会自动决定调用哪个工具：</p>
+        <div class="mcp-examples">
+          <div class="mcp-example"><span class="mcp-q">"最近有什么新鲜的树洞？"</span><span class="mcp-tool">→ get_latest_posts</span></div>
+          <div class="mcp-example"><span class="mcp-q">"帮我搜一下考试相关的帖子"</span><span class="mcp-tool">→ search_posts</span></div>
+          <div class="mcp-example"><span class="mcp-q">"上周树洞有什么大事？"</span><span class="mcp-tool">→ get_weekly_reports</span></div>
+          <div class="mcp-example"><span class="mcp-q">"看看 #12345 这个帖子说了什么"</span><span class="mcp-tool">→ get_post</span></div>
+          <div class="mcp-example"><span class="mcp-q">"我上次问完之后又有什么新帖？"</span><span class="mcp-tool">→ get_digest</span></div>
+        </div>
+      </div>
+
+      <div class="mcp-section">
+        <h3 class="mcp-h">可用工具说明</h3>
+        <table class="mcp-table">
+          <thead><tr><th>工具</th><th>作用</th><th>参数</th></tr></thead>
+          <tbody>
+            <tr><td>get_latest_posts</td><td>获取最新发布的树洞</td><td>limit（1-30）</td></tr>
+            <tr><td>get_hot_posts</td><td>获取近期热帖（按收藏排序）</td><td>days（1-14）、limit</td></tr>
+            <tr><td>search_posts</td><td>按关键词搜索</td><td>keyword（必填）、limit</td></tr>
+            <tr><td>get_post</td><td>查看帖子全文与评论</td><td>pid</td></tr>
+            <tr><td>get_weekly_reports</td><td>列出所有树洞周报</td><td>—</td></tr>
+            <tr><td>get_weekly_report</td><td>查看指定一期周报全文</td><td>week_start</td></tr>
+            <tr><td>get_digest</td><td>获取自某时间点以来的动态摘要（全局记忆）</td><td>since（天数或时间戳）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mcp-section">
+        <h3 class="mcp-h">常见问题</h3>
+        <div class="mcp-faq">
+          <div class="mcp-faq-item"><span class="mcp-faq-q">Token 丢了怎么办？</span><span class="mcp-faq-a">在本页撤销该 Token，再新建一个即可。旧 Token 立即失效。</span></div>
+          <div class="mcp-faq-item"><span class="mcp-faq-q">提示频率限制怎么办？</span><span class="mcp-faq-a">每 Token 每分钟 20 次、每天 500 次。正常对话远低于此，若触发请稍等重试。</span></div>
+          <div class="mcp-faq-item"><span class="mcp-faq-q">支持哪些 AI 客户端？</span><span class="mcp-faq-a">任何支持 MCP 协议的客户端，如 Claude Code、Cursor、Codex 等。</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="panel-about">
     <div class="about-wrap">
       <div class="about-hero">
@@ -2482,6 +2607,8 @@ const ONBOARDING_STEPS = [
     text: '「树洞周报」卡片每周一自动更新，点击即可阅读全文；下方可自定义生成全周或关键词专题分析。' },
   { selector: '.tab-btn[data-panel="subscribe"]', title: '订阅推送',
     text: '订阅关键词，一旦有新帖命中，即通过邮件提醒你。' },
+  { selector: '.tab-btn[data-panel="mcp"]', title: 'MCP · AI 接入',
+    text: '生成 Token，让 Claude Code 等 AI 助手直接帮你查询树洞——你的智能体从此拥有对树洞的全局记忆。' },
   { selector: null, title: '准备就绪',
     text: '就这些，开始探索吧！遇到问题可在「关于」页联系站长。' },
 ];
@@ -2593,6 +2720,9 @@ function switchPanel(name){
   if(name === 'subscribe'){
     loadSubscriptions();
   }
+  if(name === 'mcp'){
+    loadMcpTokens();
+  }
   if(name === 'detail'){
     // 直接通过 Tab 进入详情，清除返回来源、隐藏返回按钮
     detailOrigin = null;
@@ -2603,6 +2733,107 @@ function switchPanel(name){
 document.querySelectorAll('.tab-btn').forEach(b => {
   b.addEventListener('click', () => switchPanel(b.dataset.panel));
 });
+
+/* ==================== MCP 页面：Token 管理 ==================== */
+let mcpLastConfigSnippet = '';
+
+async function loadMcpTokens(){
+  // 邀请码用户隐藏 Token 管理
+  const forbid = document.getElementById('mcpTokenForbid');
+  const panel = document.getElementById('mcpTokenPanel');
+  if(authEmail && authEmail.startsWith('invite:')){
+    if(forbid) forbid.style.display = 'block';
+    if(panel) panel.style.display = 'none';
+    return;
+  }
+  if(forbid) forbid.style.display = 'none';
+  if(panel) panel.style.display = 'block';
+  const body = document.getElementById('mcpTokenBody');
+  if(!body) return;
+  try{
+    const data = await api('/agent/token/list');
+    if(!data.tokens || !data.tokens.length){
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--fg-secondary);padding:24px">还没有 Token，点击上方"新建"创建一个</td></tr>';
+      return;
+    }
+    body.innerHTML = data.tokens.map(t => {
+      const created = new Date(t.created_at * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'});
+      const used = t.last_used_at ? new Date(t.last_used_at * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'}) : '未使用';
+      return `<tr>
+        <td>${esc(t.label || '(无标签)')}</td>
+        <td style="color:var(--fg-secondary);font-size:12px">${created}</td>
+        <td style="color:var(--fg-secondary);font-size:12px">${used}</td>
+        <td style="color:var(--fg-secondary)">${t.call_count}</td>
+        <td><button class="mcp-revoke" data-id="${t.id}">撤销</button></td>
+      </tr>`;
+    }).join('');
+    body.querySelectorAll('.mcp-revoke').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if(!confirm('确定撤销这个 Token 吗？撤销后使用该 Token 的 Agent 将立即无法访问。')) return;
+        try{
+          await api('/agent/token/revoke', {method:'POST', body:{id:parseInt(btn.dataset.id, 10)}});
+          loadMcpTokens();
+        }catch(e){ alert('撤销失败：' + e.message); }
+      });
+    });
+  }catch(e){ /* ignore */ }
+}
+
+async function createMcpToken(){
+  const label = document.getElementById('mcpTokenLabel').value.trim();
+  try{
+    const data = await api('/agent/token/create', {method:'POST', body:{label}});
+    document.getElementById('mcpTokenLabel').value = '';
+    mcpLastConfigSnippet = JSON.stringify(data.config_snippet, null, 2);
+    showMcpTokenModal(data.token);
+    loadMcpTokens();
+  }catch(e){ alert('创建失败：' + e.message); }
+}
+
+function showMcpTokenModal(token){
+  const overlay = document.createElement('div');
+  overlay.className = 'mcp-modal';
+  overlay.innerHTML = `<div class="mcp-modal-card">
+    <h3>Token 已生成</h3>
+    <p class="mcp-warn">⚠️ 明文仅展示这一次，请立即复制保存。遗失只能撤销重建。</p>
+    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">你的 Token：</p>
+    <pre>${esc(token)}</pre>
+    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">Claude Code 配置片段：</p>
+    <pre>${esc(mcpLastConfigSnippet)}</pre>
+    <div class="mcp-modal-actions">
+      <button class="btn" id="mcpModalCopyToken">复制 Token</button>
+      <button class="btn btn-primary" id="mcpModalCopyConfig">复制配置</button>
+      <button class="btn" id="mcpModalClose">我已保存</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#mcpModalCopyToken').addEventListener('click', () => copyText(token, 'Token 已复制'));
+  overlay.querySelector('#mcpModalCopyConfig').addEventListener('click', () => copyText(mcpLastConfigSnippet, '配置已复制'));
+  overlay.querySelector('#mcpModalClose').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
+}
+
+function copyText(text, msg){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(() => { toast(msg); }).catch(() => fallbackCopy(text, msg));
+  }else{ fallbackCopy(text, msg); }
+}
+function fallbackCopy(text, msg){
+  const ta = document.createElement('textarea');
+  ta.value = text; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); toast(msg); }catch(e){ alert('请手动复制'); }
+  document.body.removeChild(ta);
+}
+
+(function(){
+  document.addEventListener('click', e => {
+    if(e.target && e.target.id === 'mcpTokenCreateBtn') createMcpToken();
+    if(e.target && e.target.id === 'mcpConfigCopy') copyText(mcpLastConfigSnippet, '配置已复制');
+  });
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Enter' && document.activeElement && document.activeElement.id === 'mcpTokenLabel') createMcpToken();
+  });
+})();
 
 /* ==================== 移动端左右滑动切换导航 ==================== */
 // 仅在窄屏启用；左右滑动切换至上/下一个主导航面板（跳过详情页）

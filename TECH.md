@@ -394,6 +394,9 @@
 | `subscription_sent` | 订阅推送去重表（sub_id + pid 主键，防重复推送） |
 | `sub_meta` | 订阅扫描水位线（last_scan_pid，首次启动设为当前最大 pid 不补推历史） |
 | `alert_logs` | 安全告警日志（level / type / subject / detail / ip / notified / created_at） |
+| `weekly_reports` | 树洞周报（week_start / week_end / content / created_at，每周一 04:00 自动生成） |
+| `weekly_report_subscriptions` | 周报邮件订阅（user_email / notify_email） |
+| `agent_tokens` | Agent API Token（user_email / token_hash / label / 调用统计，仅存 hash 不存明文） |
 
 ---
 
@@ -449,3 +452,51 @@
 - 网站仅限 `@pku.edu.cn` / `@stu.pku.edu.cn` 邮箱验证访问
 - 邀请码供非校园用户使用，一次性、可追踪
 - 数据后台（admin.html）独立密码保护，不对普通用户开放
+
+---
+
+## 七、Agent 接入（MCP）
+
+AutoTreehole 提供 Agent 接入能力，让 Claude Code / Cursor / Codex 等 AI 助手通过 MCP 协议查询树洞数据。
+
+### 架构
+
+```
+AI 客户端（本地）  ──MCP(stdio)──▶  autothole-mcp（本地 Node 进程）
+                                          │  HTTPS REST + Bearer Token
+                                          ▼
+                              Nginx:80 ──▶ Node API /api/agent/*
+```
+
+- 后端新增 `/api/agent/*` 只读 REST 接口，复用现有查询函数
+- `mcp-server/` 目录提供本地 MCP Server 包（`npx autothole-mcp` 运行）
+- 前端导航栏"MCP"页提供完整配置指南与 Token 管理
+
+### Token 机制
+
+- 格式 `ath_<22位随机>`，仅 PKU 校园邮箱用户可用（邀请码用户不开放）
+- 只存 SHA-256 hash，明文仅创建时一次性展示，遗失只能撤销重建
+- 每账号最多 3 个 Token，支持标签、调用统计、撤销
+
+### 接口列表（全部只读）
+
+| 路径 | 说明 |
+|------|------|
+| `GET /api/agent/latest` | 最新帖（limit 1-30） |
+| `GET /api/agent/hot` | 热帖（days 1-14、limit 1-30） |
+| `GET /api/agent/search` | 关键词搜索（keyword 必填） |
+| `GET /api/agent/post/:pid` | 帖子全文与评论 |
+| `GET /api/agent/weekly` | 周报列表 |
+| `GET /api/agent/weekly/:week_start` | 单期周报全文 |
+| `GET /api/agent/digest` | 增量摘要（since 天数或时间戳，模拟全局记忆） |
+| `GET /api/agent/token/list\|create\|revoke` | Token 管理（Cookie 鉴权） |
+
+### 限流（独立桶，按 token）
+
+- 每 token 每分钟 20 次、每天 500 次
+- 全局每分钟 60 次（保护服务器）
+- 超限返回 429 并触发 `alertAdmin` 告警
+
+### MCP 工具
+
+MCP Server 暴露 7 个工具：`get_latest_posts` / `get_hot_posts` / `search_posts` / `get_post` / `get_weekly_reports` / `get_weekly_report` / `get_digest`，每个工具的 inputSchema 用 JSON Schema 声明参数，AI 据此自动决定调用时机。
