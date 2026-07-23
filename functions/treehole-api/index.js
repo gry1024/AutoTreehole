@@ -841,7 +841,20 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
       throw e;
     }
   }
-  if (isAnthropic) return data.content[0].text;
+  if (isAnthropic) {
+    if (!data || !data.content || !data.content[0] || !data.content[0].text) {
+      const e = new Error("模型返回内容为空或响应结构异常");
+      e.code = "QUOTA";
+      throw e;
+    }
+    return data.content[0].text;
+  }
+  if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
+    // 响应结构异常（choices 为空/缺失），当作限额触发 fallback
+    const e = new Error("模型返回内容为空或响应结构异常");
+    e.code = "QUOTA";
+    throw e;
+  }
   return data.choices[0].message.content;
 }
 
@@ -854,13 +867,13 @@ async function callLlmWithFallback(system, user, provider, customConfig, ip = ""
   try {
     return await callLlm(system, user, provider, customConfig, ip);
   } catch (e) {
+    // 服务器 Key 代理模式下的 minimax：限额或响应异常时 fallback 到 qwen
     const canFallback = !customConfig
       && provider === "minimax"
-      && e.code === "QUOTA"
       && LLM_PROVIDERS.qwen
       && process.env[LLM_PROVIDERS.qwen.key];
     if (!canFallback) throw e;
-    console.log(`[llm] minimax 限额，自动 fallback 到 qwen`);
+    console.log(`[llm] minimax 调用失败（${e.code || "ERR"}: ${e.message.slice(0, 60)}），自动 fallback 到 qwen`);
     return await callLlm(system, user, "qwen", null, ip);
   }
 }
@@ -1066,7 +1079,7 @@ ${formatPostsBlock(rows)}
  * 生成上周树洞周报并入库（幂等：同一周只生成一次）。
  * 由定时器每周一凌晨触发，启动时也会补跑漏掉的最近一周。
  */
-async function generateWeeklyReport() {
+async function generateWeeklyReport(retryCount = 0) {
   await ensureDb();
   const { week_start, week_end } = lastWeekRangeShanghai();
   // 幂等：该周周报已存在则跳过
@@ -1083,7 +1096,7 @@ async function generateWeeklyReport() {
   if (!useful.length) { console.log("[weekly] 上周无有效帖子，跳过周报生成"); return; }
   const { posts, sampled } = sampleForLlm(useful);
   const promptData = buildWeeklyReportPrompt(posts, week_start, week_end, useful.length, sampled);
-  console.log(`[weekly] 开始生成周报：上周有效帖 ${useful.length} 条，传入 ${posts.length} 条`);
+  console.log(`[weekly] 开始生成周报：上周有效帖 ${useful.length} 条，传入 ${posts.length} 条${retryCount > 0 ? `（第 ${retryCount + 1} 次尝试）` : ""}`);
   try {
     const content = await callLlmWithFallback(promptData.system, promptData.user, "minimax", null, "system-weekly");
     const enriched = enrichReport(content);
@@ -1096,6 +1109,14 @@ async function generateWeeklyReport() {
     sendWeeklyReportToSubscribers(reportRow).catch(e => console.error("[weekly] 订阅邮件发送失败:", e.message));
   } catch (e) {
     console.error(`[weekly] 周报生成失败: ${e.message}`);
+    // 失败重试：最多 3 次，每次间隔 3 分钟（幂等，重试时已存在则跳过）
+    if (retryCount < 2) {
+      console.log(`[weekly] 将在 3 分钟后重试（剩余 ${2 - retryCount} 次）`);
+      setTimeout(() => generateWeeklyReport(retryCount + 1).catch(err => console.error("[weekly] 重试失败:", err.message)), 180_000);
+    } else {
+      console.error("[weekly] 已达最大重试次数，等待下次定时触发");
+      alertAdmin("error", "server_error", "树洞周报自动生成失败", `week_start=${week_start}\n已达最大重试次数(3)\n最后错误: ${e.message}`, "");
+    }
   }
 }
 
