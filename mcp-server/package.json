@@ -12,6 +12,20 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
-  "keywords": ["mcp", "treehole", "pku", "claude", "ai"],
-  "license": "MIT"
+  "keywords": ["mcp", "treehole", "pku", "claude", "ai", "model-context-protocol"],
+  "license": "MIT",
+  "author": "AutoTreehole",
+  "homepage": "https://github.com/gry1024/AutoTreehole#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gry1024/AutoTreehole.git",
+    "directory": "mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/gry1024/AutoTreehole/issues"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ]
 }
