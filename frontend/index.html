@@ -133,8 +133,19 @@ input,select,textarea{font-family:var(--font-sans);color:inherit}
   padding:32px 24px 64px;
 }
 .panel{display:none}
-.panel.active{display:block;animation:fadeIn .3s ease}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.panel.active{display:block}
+/* 新手引导切换 tab：容器做丝滑的淡入+上移，spotlight 过渡走 transform */
+.panel.smooth-enter{animation:panelSlideIn .42s cubic-bezier(.2,.7,.2,1) both}
+@keyframes panelSlideIn{
+  0%{opacity:0;transform:translateY(14px)}
+  100%{opacity:1;transform:none}
+}
+#onboardingSpotlight{transition:left .42s cubic-bezier(.2,.7,.2,1),top .42s cubic-bezier(.2,.7,.2,1),width .42s cubic-bezier(.2,.7,.2,1),height .42s cubic-bezier(.2,.7,.2,1),box-shadow .2s ease,opacity .2s ease}
+#onboardingCard{transition:left .42s cubic-bezier(.2,.7,.2,1),top .42s cubic-bezier(.2,.7,.2,1),transform .42s cubic-bezier(.2,.7,.2,1),opacity .3s ease}
+.panel-enter-left{animation:panelFromLeft .42s cubic-bezier(.2,.7,.2,1) both}
+.panel-enter-right{animation:panelFromRight .42s cubic-bezier(.2,.7,.2,1) both}
+@keyframes panelFromLeft{0%{opacity:0;transform:translateX(-18px)}100%{opacity:1;transform:none}}
+@keyframes panelFromRight{0%{opacity:0;transform:translateX(18px)}100%{opacity:1;transform:none}}
 
 /* 区块标题 · 强视觉层级 */
 .section-head{
@@ -932,6 +943,7 @@ mark{
   display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
   gap:12px;
 }
+#weeklyReportBody{display:block;}
 .weekly-card{
   cursor:pointer;padding:14px 16px;border-radius:10px;
   background:rgba(0,0,0,0.015);transition:background .18s ease,transform .18s ease;
@@ -946,6 +958,14 @@ mark{
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
 }
 .weekly-card-foot{font-size:11px;color:var(--fg-secondary);font-weight:300;}
+.weekly-card-latest{border:1px solid var(--border);background:var(--bg-card);}
+.weekly-view-all{
+  display:block;width:100%;margin-top:12px;padding:10px 16px;
+  background:none;border:1px solid var(--border);border-radius:8px;
+  font-size:13px;color:var(--accent);cursor:pointer;text-align:center;
+  transition:background .18s ease,border-color .18s ease;
+}
+.weekly-view-all:hover{background:var(--bg-card);border-color:var(--accent);}
 
 /* 周报全文页（沿用全局 .markdown 衬线排版，仅微调间距） */
 #panel-weekly .markdown{max-width:none;}
@@ -979,12 +999,35 @@ mark{
 .mcp-faq-item{padding:16px;border:1px solid var(--border);border-radius:8px;}
 .mcp-faq-q{display:block;font-size:14px;font-weight:500;color:var(--fg);margin-bottom:6px;}
 .mcp-faq-a{display:block;font-size:13px;line-height:1.7;color:var(--fg-secondary);}
-.mcp-modal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:24px;}
-.mcp-modal-card{background:#fff;border-radius:14px;padding:32px;max-width:560px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.12);}
+.mcp-modal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;}
+.mcp-modal-card{background:#fff;border-radius:14px;padding:28px;max-width:560px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.12);max-height:90vh;overflow-y:auto;}
 .mcp-modal-card h3{font-size:18px;font-weight:600;margin:0 0 8px;color:var(--fg);}
 .mcp-modal-card .mcp-warn{font-size:13px;color:var(--danger);margin:0 0 16px;}
-.mcp-modal-card pre{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:11px;line-height:1.6;overflow-x:auto;margin:0 0 16px;font-family:var(--font-mono);}
-.mcp-modal-actions{display:flex;gap:12px;justify-content:flex-end;}
+.mcp-modal-card pre{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:11px;line-height:1.6;overflow-x:auto;margin:0 0 16px;font-family:var(--font-mono);max-height:240px;white-space:pre-wrap;word-break:break-word;}
+.mcp-modal-card pre.mcp-ai-pre{max-height:320px;}
+.mcp-modal-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.mcp-modal-actions .btn{flex:1 1 auto;min-width:120px;text-align:center;}
+.mcp-ai-copy{margin-top:12px;}
+.mcp-ai-text{width:100%;resize:vertical;min-height:200px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;line-height:1.7;font-family:var(--font-mono);color:var(--fg);outline:none;}
+.mcp-ai-text:focus{border-color:var(--accent-blue);}
+.mcp-tip{font-size:12px;color:var(--fg-secondary);}
+.mcp-method-tabs{display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.mcp-method-tab{padding:10px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;color:var(--fg-secondary);font-family:var(--font-sans);transition:color .18s,border-color .18s;}
+.mcp-method-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500;}
+.mcp-method-tab:hover{color:var(--fg);}
+/* 手机端：MCP Token 表格改为卡片式 */
+@media(max-width:640px){
+  .mcp-table thead{display:none;}
+  .mcp-table,.mcp-table tbody,.mcp-table tr,.mcp-table td{display:block;width:100%;}
+  .mcp-table tr{padding:12px 0;border-bottom:1px solid var(--border);}
+  .mcp-table td{padding:4px 0;border:none;display:flex;justify-content:space-between;align-items:center;gap:12px;}
+  .mcp-table td::before{content:attr(data-label);font-size:11px;color:var(--fg-secondary);font-weight:400;flex-shrink:0;}
+  .mcp-table td[data-label="操作"]{justify-content:flex-end;}
+  .mcp-modal{padding:12px;}
+  .mcp-modal-card{padding:20px;border-radius:12px;}
+  .mcp-modal-actions .btn{min-width:100%;}
+  .mcp-ai-text{min-height:140px;font-size:11px;}
+}
 .report-controls{
   padding:0;display:flex;flex-direction:column;gap:20px;
   position:sticky;top:80px;
@@ -2039,35 +2082,26 @@ mark{
     <div id="weeklyFullBody"></div>
   </section>
 
-  <!-- ========== 关于 ========== -->
+  <!-- ========== MCP ========== -->
   <section class="panel" id="panel-mcp">
     <div class="mcp-wrap">
       <div class="mcp-hero">
         <h1 class="mcp-title">让 AI 帮你刷树洞</h1>
-        <p class="mcp-sub">AutoTreehole 支持把树洞数据接入 Claude Code、Cursor、Codex 等 AI 编程助手。你只需对 AI 说一句话，它就能自动帮你查询最新树洞、搜索关键词、阅读周报——你的智能体从此拥有对树洞的全局记忆。</p>
+        <p class="mcp-sub">3 步搞定：生成 Token → 复制给 AI → 开始用自然语言查树洞。</p>
       </div>
 
       <div class="mcp-section">
-        <h3 class="mcp-h">准备工作</h3>
-        <p class="mcp-p">你需要：</p>
-        <ul class="mcp-list">
-          <li>一个支持 MCP 协议的 AI 客户端（Claude Code / Cursor / Codex 等）</li>
-          <li>北大校园邮箱认证账号（邀请码用户不可用）</li>
-        </ul>
-      </div>
-
-      <div class="mcp-section">
-        <h3 class="mcp-h">第一步 · 生成你的 Token</h3>
-        <p class="mcp-p">Token 是你的 Agent 访问树洞的凭证，每个账号最多 3 个。生成后请立即复制保存——明文仅展示这一次，遗失只能撤销重建。</p>
+        <h3 class="mcp-h">第一步 · 生成 Token</h3>
+        <p class="mcp-p">Token 是你的 AI 访问树洞的钥匙。每个账号最多 3 个，有效期 180 天。生成后请立即复制——明文只显示一次，丢了只能撤销重建。</p>
         <div id="mcpTokenArea">
           <div id="mcpTokenForbid" class="mcp-forbid" style="display:none">此功能仅校园邮箱用户可用。邀请码用户如需使用，请用校园邮箱重新注册。</div>
           <div id="mcpTokenPanel">
             <div class="mcp-token-create">
-              <input type="text" id="mcpTokenLabel" class="input" style="max-width:240px" placeholder="Token 标签，如：我的Claude Code" maxlength="20">
+              <input type="text" id="mcpTokenLabel" class="input" style="max-width:240px" placeholder="给 Token 起个名字，如：我的Claude" maxlength="20">
               <button class="btn btn-primary" id="mcpTokenCreateBtn">新建 Token</button>
             </div>
             <table class="mcp-table" id="mcpTokenTable" style="margin-top:20px">
-              <thead><tr><th>标签</th><th>创建时间</th><th>最近使用</th><th>调用次数</th><th>操作</th></tr></thead>
+              <thead><tr><th>标签</th><th>创建时间</th><th>最近使用</th><th>调用次数</th><th>有效期</th><th>操作</th></tr></thead>
               <tbody id="mcpTokenBody"></tbody>
             </table>
           </div>
@@ -2075,54 +2109,60 @@ mark{
       </div>
 
       <div class="mcp-section">
-        <h3 class="mcp-h">第二步 · 配置你的 AI 助手</h3>
-        <p class="mcp-p">将下方配置片段粘贴到你的 AI 客户端设置中（Token 会自动填入）。以 Claude Code 为例：</p>
-        <ol class="mcp-list mcp-steps">
-          <li>新建 Token 后，在弹窗中复制完整配置片段</li>
-          <li>打开 Claude Code 配置文件（通常在 <code>~/.claude/claude_desktop_config.json</code> 或对应客户端的 MCP 设置）</li>
-          <li>粘贴配置片段，保存</li>
-          <li>重启客户端，确认 autothole 服务已连接</li>
-        </ol>
-        <div class="mcp-config-block" id="mcpConfigBlock" style="display:none">
-          <pre id="mcpConfigPre"></pre>
-          <button class="btn" id="mcpConfigCopy">复制配置</button>
+        <h3 class="mcp-h">第二步 · 配置到你的 AI</h3>
+        <p class="mcp-p">选一种方式，二选一即可：</p>
+
+        <div class="mcp-method-tabs">
+          <button class="mcp-method-tab active" data-method="auto">方式 A · 让 AI 自己装（推荐，0 门槛）</button>
+          <button class="mcp-method-tab" data-method="manual">方式 B · 手动粘贴配置</button>
+        </div>
+
+        <div class="mcp-method-panel" id="mcpMethodAuto">
+          <p class="mcp-p">生成 Token 后，点击下方按钮复制一段话，直接粘贴到 AI 对话框发送即可。AI 会自动完成安装和配置，你什么都不用管。</p>
+          <div class="mcp-ai-copy">
+            <textarea id="mcpAiInstruction" class="mcp-ai-text" readonly rows="8" placeholder="先在上方生成 Token，这里会出现可复制的内容…"></textarea>
+            <div style="margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-primary" id="mcpCopyAiBtn" disabled>复制给 AI 的话</button>
+              <span class="mcp-tip">粘贴到对话框直接发送，AI 会自己搞定剩下的事。</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mcp-method-panel" id="mcpMethodManual" style="display:none">
+          <p class="mcp-p">生成 Token 后，把下方 JSON 配置粘贴到你 AI 客户端的 MCP 设置里。</p>
+          <div class="mcp-config-block" id="mcpConfigBlock" style="display:none">
+            <pre id="mcpConfigPre"></pre>
+            <button class="btn" id="mcpConfigCopy">复制配置</button>
+          </div>
+          <p class="mcp-p" style="margin-top:16px;font-size:12px">各客户端配置入口：</p>
+          <ul class="mcp-list" style="font-size:12px;line-height:1.8">
+            <li><strong>Claude Desktop</strong>（Mac）：菜单栏 Claude → Settings → Developer → Edit Config</li>
+            <li><strong>Claude Desktop</strong>（Windows）：系统托盘 Claude → Settings → Developer → Edit Config</li>
+            <li><strong>Cursor</strong>：Settings → MCP → Add new MCP Server</li>
+            <li><strong>Claude Code</strong>（命令行）：运行 <code>claude mcp add autothole -- npx -y autothole-mcp</code>，然后设环境变量 <code>AUTOTREEHOLE_URL</code> 和 <code>AUTOTREEHOLE_TOKEN</code></li>
+          </ul>
+          <p class="mcp-p" style="font-size:12px;margin-top:8px">配置后重启客户端，确认 autothole 服务已连接即可。</p>
         </div>
       </div>
 
       <div class="mcp-section">
         <h3 class="mcp-h">第三步 · 开始使用</h3>
-        <p class="mcp-p">配置完成后，直接用自然语言向你的 AI 提问即可。它会自动决定调用哪个工具：</p>
+        <p class="mcp-p">配置完成后，直接用自然语言向你的 AI 提问：</p>
         <div class="mcp-examples">
-          <div class="mcp-example"><span class="mcp-q">"最近有什么新鲜的树洞？"</span><span class="mcp-tool">→ get_latest_posts</span></div>
-          <div class="mcp-example"><span class="mcp-q">"帮我搜一下考试相关的帖子"</span><span class="mcp-tool">→ search_posts</span></div>
-          <div class="mcp-example"><span class="mcp-q">"上周树洞有什么大事？"</span><span class="mcp-tool">→ get_weekly_reports</span></div>
-          <div class="mcp-example"><span class="mcp-q">"看看 #12345 这个帖子说了什么"</span><span class="mcp-tool">→ get_post</span></div>
-          <div class="mcp-example"><span class="mcp-q">"我上次问完之后又有什么新帖？"</span><span class="mcp-tool">→ get_digest</span></div>
+          <div class="mcp-example"><span class="mcp-q">"最近有什么新鲜的树洞？"</span><span class="mcp-tool">get_latest_posts</span></div>
+          <div class="mcp-example"><span class="mcp-q">"帮我搜一下考试相关的帖子"</span><span class="mcp-tool">search_posts</span></div>
+          <div class="mcp-example"><span class="mcp-q">"看看 #12345 说了什么"</span><span class="mcp-tool">get_post</span></div>
+          <div class="mcp-example"><span class="mcp-q">"上周树洞有什么大事？"</span><span class="mcp-tool">get_weekly_reports</span></div>
+          <div class="mcp-example"><span class="mcp-q">"我上次问完后又有什么新帖？"</span><span class="mcp-tool">get_digest</span></div>
         </div>
-      </div>
-
-      <div class="mcp-section">
-        <h3 class="mcp-h">可用工具说明</h3>
-        <table class="mcp-table">
-          <thead><tr><th>工具</th><th>作用</th><th>参数</th></tr></thead>
-          <tbody>
-            <tr><td>get_latest_posts</td><td>获取最新发布的树洞</td><td>limit（1-30）</td></tr>
-            <tr><td>get_hot_posts</td><td>获取近期热帖（按收藏排序）</td><td>days（1-14）、limit</td></tr>
-            <tr><td>search_posts</td><td>按关键词搜索</td><td>keyword（必填）、limit</td></tr>
-            <tr><td>get_post</td><td>查看帖子全文与评论</td><td>pid</td></tr>
-            <tr><td>get_weekly_reports</td><td>列出所有树洞周报</td><td>—</td></tr>
-            <tr><td>get_weekly_report</td><td>查看指定一期周报全文</td><td>week_start</td></tr>
-            <tr><td>get_digest</td><td>获取自某时间点以来的动态摘要（全局记忆）</td><td>since（天数或时间戳）</td></tr>
-          </tbody>
-        </table>
       </div>
 
       <div class="mcp-section">
         <h3 class="mcp-h">常见问题</h3>
         <div class="mcp-faq">
-          <div class="mcp-faq-item"><span class="mcp-faq-q">Token 丢了怎么办？</span><span class="mcp-faq-a">在本页撤销该 Token，再新建一个即可。旧 Token 立即失效。</span></div>
-          <div class="mcp-faq-item"><span class="mcp-faq-q">提示频率限制怎么办？</span><span class="mcp-faq-a">每 Token 每分钟 20 次、每天 500 次。正常对话远低于此，若触发请稍等重试。</span></div>
-          <div class="mcp-faq-item"><span class="mcp-faq-q">支持哪些 AI 客户端？</span><span class="mcp-faq-a">任何支持 MCP 协议的客户端，如 Claude Code、Cursor、Codex 等。</span></div>
+          <div class="mcp-faq-item"><span class="mcp-faq-q">Token 丢了怎么办？</span><span class="mcp-faq-a">在本页点"撤销"删掉旧 Token，再新建一个即可。旧 Token 立即失效。</span></div>
+          <div class="mcp-faq-item"><span class="mcp-faq-q">提示频率限制？</span><span class="mcp-faq-a">每 Token 每分钟 20 次、每天 500 次，正常对话远低于此。触发后稍等片刻重试。</span></div>
+          <div class="mcp-faq-item"><span class="mcp-faq-q">Token 能给别人用吗？</span><span class="mcp-faq-a">不能。Token 绑定了你的设备和账号，换设备/换人会自动失效。</span></div>
         </div>
       </div>
     </div>
@@ -2634,10 +2674,11 @@ function startOnboarding(){
       endOnboarding();
     }else{
       onboardingIdx++;
-      renderOnboardingStep();
+      // 先切换到对应 panel 并做丝滑滚动，然后再渲染高亮（等过渡动画稍微启动即可）
+      renderOnboardingStep(true);
     }
   };
-  renderOnboardingStep();
+  renderOnboardingStep(false);
 }
 
 function endOnboarding(){
@@ -2647,7 +2688,11 @@ function endOnboarding(){
   document.body.style.overflow = '';
 }
 
-function renderOnboardingStep(){
+/**
+ * 新手引导步骤渲染
+ * @param {boolean} advance 是否来自"下一步"按钮推进（需要等待 tab 切换动画再定位）
+ */
+function renderOnboardingStep(advance){
   const step = ONBOARDING_STEPS[onboardingIdx];
   const spot = document.getElementById('onboardingSpotlight');
   const card = document.getElementById('onboardingCard');
@@ -2661,6 +2706,37 @@ function renderOnboardingStep(){
   progEl.textContent = `${onboardingIdx + 1} / ${ONBOARDING_STEPS.length}`;
   nextBtn.textContent = (onboardingIdx >= ONBOARDING_STEPS.length - 1) ? '开始使用' : '下一步';
 
+  // 若步骤指向某个 tab：先切到该 panel（带丝滑动画），把元素暴露在视口内
+  const tabBtn = step.selector && step.selector.startsWith('.tab-btn[data-panel=')
+    ? document.querySelector(step.selector) : null;
+  const panelName = tabBtn ? tabBtn.dataset.panel : null;
+  const activePanel = document.querySelector('.panel.active');
+  const activeName = activePanel ? activePanel.id.replace('panel-', '') : null;
+
+  const doPosition = () => {
+    // 让 spotlight 与卡片重新读取 rect
+    positionOnboardingSpot(step);
+    // 如果目标元素不在可视区（例如 tab 本身在窄屏溢出），滚动到它附近
+    if(step.selector){
+      const t = document.querySelector(step.selector);
+      if(t && typeof t.scrollIntoView === 'function'){
+        try{ t.scrollIntoView({behavior:'smooth', block:'center', inline:'center'}); }catch(e){ /* ignore */ }
+      }
+    }
+  };
+
+  if(panelName && panelName !== activeName){
+    switchPanel(panelName, {animate:true});
+    // 等 tab 切换动画启动一小段时间再定位，使 spotlight 过渡更顺滑
+    setTimeout(doPosition, advance ? 180 : 60);
+  }else{
+    doPosition();
+  }
+}
+
+function positionOnboardingSpot(step){
+  const spot = document.getElementById('onboardingSpotlight');
+  const card = document.getElementById('onboardingCard');
   if(step.selector){
     const target = document.querySelector(step.selector);
     if(target){
@@ -2700,16 +2776,42 @@ function renderOnboardingStep(){
 // 窗口尺寸变化时重新定位当前步骤
 window.addEventListener('resize', () => {
   if(!document.getElementById('onboarding').classList.contains('hidden')){
-    renderOnboardingStep();
+    positionOnboardingSpot(ONBOARDING_STEPS[onboardingIdx]);
   }
 });
 
 /* ==================== Tab 导航切换 ==================== */
 let detailOrigin = null; // 记录进入详情页前的来源面板和滚动位置
+let lastPanel = 'overview'; // 上一个主导航（仅用于动画方向）
 
-function switchPanel(name){
+function switchPanel(name, opts = {}){
+  const prevPanelEl = document.querySelector('.panel.active');
+  const prevName = prevPanelEl ? prevPanelEl.id.replace('panel-', '') : null;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === name));
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  // 先统一移除其它 active
+  document.querySelectorAll('.panel').forEach(p => {
+    if(p.id !== 'panel-' + name) p.classList.remove('active');
+    p.classList.remove('smooth-enter','panel-enter-left','panel-enter-right');
+  });
+  const nextPanelEl = document.getElementById('panel-' + name);
+  if(nextPanelEl){
+    nextPanelEl.classList.add('active');
+    // 丝滑切换动画：引导 / 手动切换时均启用
+    if(opts.animate !== false){
+      // 方向：按 tab 顺序左→右 / 右→左 滑动
+      const tabNames = Array.from(document.querySelectorAll('.tab-btn')).map(b => b.dataset.panel).filter(Boolean);
+      const iPrev = tabNames.indexOf(lastPanel);
+      const iNext = tabNames.indexOf(name);
+      const goRight = iNext >= 0 && iPrev >= 0 && iNext > iPrev;
+      const goLeft = iNext >= 0 && iPrev >= 0 && iNext < iPrev;
+      if(goRight) nextPanelEl.classList.add('panel-enter-right');
+      else if(goLeft) nextPanelEl.classList.add('panel-enter-left');
+      else nextPanelEl.classList.add('smooth-enter');
+    }
+    // 主界面滚动到顶部（丝滑），避免进入新 panel 还停在旧位置
+    try{ window.scrollTo({top:0, behavior:'smooth'}); }catch(e){ window.scrollTo(0,0); }
+  }
+  if(prevName !== name) lastPanel = name;
   if(name === 'overview'){
     loadStats();
     loadOverviewHot();
@@ -2736,6 +2838,7 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 
 /* ==================== MCP 页面：Token 管理 ==================== */
 let mcpLastConfigSnippet = '';
+let mcpLastAiInstruction = '';
 
 async function loadMcpTokens(){
   // 邀请码用户隐藏 Token 管理
@@ -2753,18 +2856,33 @@ async function loadMcpTokens(){
   try{
     const data = await api('/agent/token/list');
     if(!data.tokens || !data.tokens.length){
-      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--fg-secondary);padding:24px">还没有 Token，点击上方"新建"创建一个</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--fg-secondary);padding:24px">还没有 Token，点击上方"新建"创建一个</td></tr>';
       return;
     }
+    const nowSec = Math.floor(Date.now() / 1000);
     body.innerHTML = data.tokens.map(t => {
       const created = new Date(t.created_at * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'});
       const used = t.last_used_at ? new Date(t.last_used_at * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'}) : '未使用';
+      // 有效期：展示到期日期 + 剩余天数；不足 7 天标红
+      let expireCell = '<span style="color:var(--fg-tertiary)">长期</span>';
+      if(t.expire_at && t.expire_at > 0){
+        const expDate = new Date(t.expire_at * 1000).toLocaleDateString('zh-CN', {timeZone:'Asia/Shanghai'});
+        const daysLeft = Math.ceil((t.expire_at - nowSec) / 86400);
+        if(daysLeft <= 0){
+          expireCell = `<span style="color:var(--danger)" title="已过期，将自动失效">已过期</span>`;
+        }else if(daysLeft <= 7){
+          expireCell = `<span style="color:var(--danger)" title="即将过期">${expDate}<br><span style="font-size:11px">剩 ${daysLeft} 天</span></span>`;
+        }else{
+          expireCell = `<span style="color:var(--fg-secondary);font-size:12px">${expDate}<br><span style="font-size:11px;color:var(--fg-tertiary)">剩 ${daysLeft} 天</span></span>`;
+        }
+      }
       return `<tr>
-        <td>${esc(t.label || '(无标签)')}</td>
-        <td style="color:var(--fg-secondary);font-size:12px">${created}</td>
-        <td style="color:var(--fg-secondary);font-size:12px">${used}</td>
-        <td style="color:var(--fg-secondary)">${t.call_count}</td>
-        <td><button class="mcp-revoke" data-id="${t.id}">撤销</button></td>
+        <td data-label="标签">${esc(t.label || '(无标签)')}</td>
+        <td data-label="创建" style="color:var(--fg-secondary);font-size:12px">${created}</td>
+        <td data-label="最近使用" style="color:var(--fg-secondary);font-size:12px">${used}</td>
+        <td data-label="调用" style="color:var(--fg-secondary)">${t.call_count}</td>
+        <td data-label="有效期">${expireCell}</td>
+        <td data-label="操作"><button class="mcp-revoke" data-id="${t.id}">撤销</button></td>
       </tr>`;
     }).join('');
     body.querySelectorAll('.mcp-revoke').forEach(btn => {
@@ -2785,29 +2903,45 @@ async function createMcpToken(){
     const data = await api('/agent/token/create', {method:'POST', body:{label}});
     document.getElementById('mcpTokenLabel').value = '';
     mcpLastConfigSnippet = JSON.stringify(data.config_snippet, null, 2);
-    showMcpTokenModal(data.token);
+    mcpLastAiInstruction = data.ai_instruction || '';
+    const ai = document.getElementById('mcpAiInstruction');
+    const aiBtn = document.getElementById('mcpCopyAiBtn');
+    if(ai){ ai.value = mcpLastAiInstruction; ai.scrollTop = 0; }
+    if(aiBtn) aiBtn.disabled = !mcpLastAiInstruction;
+    const cfgBlock = document.getElementById('mcpConfigBlock');
+    const cfgPre = document.getElementById('mcpConfigPre');
+    if(cfgPre) cfgPre.textContent = mcpLastConfigSnippet;
+    if(cfgBlock) cfgBlock.style.display = 'block';
+    showMcpTokenModal(data.token, data);
     loadMcpTokens();
   }catch(e){ alert('创建失败：' + e.message); }
 }
 
-function showMcpTokenModal(token){
+function showMcpTokenModal(token, data){
+  const ttlDays = (data && data.ttl_days) ? data.ttl_days : 180;
+  const expireAt = (data && data.expire_at) ? data.expire_at : 0;
+  const expireStr = expireAt ? new Date(expireAt * 1000).toLocaleDateString('zh-CN', {timeZone:'Asia/Shanghai'}) : '';
   const overlay = document.createElement('div');
   overlay.className = 'mcp-modal';
   overlay.innerHTML = `<div class="mcp-modal-card">
     <h3>Token 已生成</h3>
     <p class="mcp-warn">⚠️ 明文仅展示这一次，请立即复制保存。遗失只能撤销重建。</p>
-    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">你的 Token：</p>
+    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">你的 Token${expireStr ? `（有效期至 ${expireStr}，约 ${ttlDays} 天，过期需重新生成）` : ''}：</p>
     <pre>${esc(token)}</pre>
-    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">Claude Code 配置片段：</p>
+    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">👉 推荐：直接复制这段话给 AI，它会自己完成配置（0 门槛）：</p>
+    <pre class="mcp-ai-pre">${esc(mcpLastAiInstruction || '')}</pre>
+    <p style="font-size:13px;color:var(--fg);margin:0 0 12px;">Claude Code 配置片段（手动配置用）：</p>
     <pre>${esc(mcpLastConfigSnippet)}</pre>
     <div class="mcp-modal-actions">
       <button class="btn" id="mcpModalCopyToken">复制 Token</button>
-      <button class="btn btn-primary" id="mcpModalCopyConfig">复制配置</button>
+      <button class="btn btn-primary" id="mcpModalCopyAi">复制给 AI 的文案</button>
+      <button class="btn" id="mcpModalCopyConfig">复制配置</button>
       <button class="btn" id="mcpModalClose">我已保存</button>
     </div>
   </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#mcpModalCopyToken').addEventListener('click', () => copyText(token, 'Token 已复制'));
+  overlay.querySelector('#mcpModalCopyAi').addEventListener('click', () => copyText(mcpLastAiInstruction || '', '已复制，直接粘贴给 AI 即可'));
   overlay.querySelector('#mcpModalCopyConfig').addEventListener('click', () => copyText(mcpLastConfigSnippet, '配置已复制'));
   overlay.querySelector('#mcpModalClose').addEventListener('click', () => overlay.remove());
   overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
@@ -2829,6 +2963,16 @@ function fallbackCopy(text, msg){
   document.addEventListener('click', e => {
     if(e.target && e.target.id === 'mcpTokenCreateBtn') createMcpToken();
     if(e.target && e.target.id === 'mcpConfigCopy') copyText(mcpLastConfigSnippet, '配置已复制');
+    if(e.target && e.target.id === 'mcpCopyAiBtn'){
+      if(mcpLastAiInstruction) copyText(mcpLastAiInstruction, '已复制，直接粘贴给 AI 即可');
+    }
+    // MCP 配置方式 tab 切换
+    if(e.target && e.target.classList && e.target.classList.contains('mcp-method-tab')){
+      const method = e.target.dataset.method;
+      document.querySelectorAll('.mcp-method-tab').forEach(t => t.classList.toggle('active', t === e.target));
+      document.getElementById('mcpMethodAuto').style.display = method === 'auto' ? 'block' : 'none';
+      document.getElementById('mcpMethodManual').style.display = method === 'manual' ? 'block' : 'none';
+    }
   });
   document.addEventListener('keydown', e => {
     if(e.key === 'Enter' && document.activeElement && document.activeElement.id === 'mcpTokenLabel') createMcpToken();
@@ -2916,6 +3060,11 @@ function returnToOrigin(){
   detailOrigin = null;
   const backBtn = document.getElementById('detailBackBtn');
   if(backBtn) backBtn.style.display = 'none';
+  // 特殊情况：从周报全文返回到周报列表（而非直接回报告页）
+  if(origin && origin.reRender === 'weeklyList'){
+    renderWeeklyList();
+    return;
+  }
   if(origin){
     const panel = origin.panel;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
@@ -3458,7 +3607,10 @@ function stopProgress(){
   if(reportTimer){ clearInterval(reportTimer); reportTimer = null; }
 }
 
-// 加载树洞周报卡片列表（自动生成，所有用户可见）
+// 缓存周报列表数据（供"查看全部"子页面复用）
+let weeklyReportsCache = [];
+
+// 加载树洞周报：报告页只展示最新一期 + "查看全部"入口
 async function loadWeeklyReport(){
   const body = document.getElementById('weeklyReportBody');
   const meta = document.getElementById('weeklyReportMeta');
@@ -3466,30 +3618,76 @@ async function loadWeeklyReport(){
   try{
     const data = await api('/report/weekly', {method:'GET'});
     if(!data || !data.available || !data.reports || !data.reports.length){
-      body.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px 24px;color:var(--fg-secondary)">
+      weeklyReportsCache = [];
+      body.innerHTML = `<div style="text-align:center;padding:20px 24px;color:var(--fg-secondary)">
         <div style="font-size:13px;font-weight:300">本周周报尚未生成，将于每周一自动更新</div>
       </div>`;
       meta.textContent = '';
       loadWeeklySubscribeStatus();
       return;
     }
+    weeklyReportsCache = data.reports;
     meta.textContent = `共 ${data.reports.length} 期 · 每周一自动更新`;
-    body.innerHTML = data.reports.map(r => `
-      <div class="weekly-card" data-ws="${r.week_start}">
-        <div class="weekly-card-range">${fmtTime(r.week_start).slice(0,10)} ~ ${fmtTime(r.week_end-1).slice(0,10)}</div>
-        <div class="weekly-card-summary">${esc(r.summary || '点击查看本周周报全文')}</div>
-        <div class="weekly-card-foot">生成于 ${fmtTime(r.created_at)}</div>
+    // 只展示最新一期卡片
+    const latest = data.reports[0];
+    body.innerHTML = `
+      <div class="weekly-card weekly-card-latest" data-ws="${latest.week_start}">
+        <div class="weekly-card-range">${fmtTime(latest.week_start).slice(0,10)} ~ ${fmtTime(latest.week_end-1).slice(0,10)}</div>
+        <div class="weekly-card-summary">${esc(latest.summary || '点击查看本周周报全文')}</div>
+        <div class="weekly-card-foot">生成于 ${fmtTime(latest.created_at)}</div>
       </div>
-    `).join('');
-    body.querySelectorAll('.weekly-card').forEach(card => {
-      card.addEventListener('click', () => openWeeklyReport(card.dataset.ws));
-    });
+      ${data.reports.length > 1 ? `<button class="weekly-view-all" id="weeklyViewAllBtn">查看全部 ${data.reports.length} 期周报 →</button>` : ''}
+    `;
+    const latestCard = body.querySelector('.weekly-card-latest');
+    if(latestCard) latestCard.addEventListener('click', () => openWeeklyReport(latest.week_start));
+    const viewAllBtn = document.getElementById('weeklyViewAllBtn');
+    if(viewAllBtn) viewAllBtn.addEventListener('click', openWeeklyReportList);
     loadWeeklySubscribeStatus();
   }catch(e){
-    body.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px 24px;color:var(--fg-secondary)">
+    body.innerHTML = `<div style="text-align:center;padding:20px 24px;color:var(--fg-secondary)">
       <div style="font-size:13px;font-weight:300">周报加载失败，请稍后刷新重试</div>
     </div>`;
   }
+}
+
+// 打开周报列表子页面（panel-weekly 列表模式）
+function openWeeklyReportList(){
+  const activePanel = document.querySelector('.panel.active');
+  detailOrigin = {
+    panel: activePanel ? activePanel.id.replace('panel-', '') : 'report',
+    scrollY: window.scrollY
+  };
+  const backBtn = document.getElementById('detailBackBtn');
+  if(backBtn) backBtn.style.display = 'flex';
+  renderWeeklyList();
+  window.scrollTo(0, 0);
+}
+
+// 渲染周报列表（panel-weekly 内容区）
+function renderWeeklyList(){
+  const titleEl = document.getElementById('weeklyFullTitle');
+  const metaEl = document.getElementById('weeklyFullMeta');
+  const body = document.getElementById('weeklyFullBody');
+  if(titleEl) titleEl.textContent = '树洞周报 · 全部期数';
+  if(metaEl) metaEl.textContent = weeklyReportsCache.length ? `共 ${weeklyReportsCache.length} 期 · 每周一自动更新` : '';
+  // 切换到 panel-weekly（不走 switchPanel 以免被清空 origin）
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-weekly'));
+  if(!body) return;
+  if(!weeklyReportsCache.length){
+    body.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--fg-secondary);font-size:13px;font-weight:300">暂无周报</div>`;
+    return;
+  }
+  body.innerHTML = `<div class="weekly-cards">${weeklyReportsCache.map(r => `
+    <div class="weekly-card" data-ws="${r.week_start}">
+      <div class="weekly-card-range">${fmtTime(r.week_start).slice(0,10)} ~ ${fmtTime(r.week_end-1).slice(0,10)}</div>
+      <div class="weekly-card-summary">${esc(r.summary || '点击查看本周周报全文')}</div>
+      <div class="weekly-card-foot">生成于 ${fmtTime(r.created_at)}</div>
+    </div>
+  `).join('')}</div>`;
+  body.querySelectorAll('.weekly-card').forEach(card => {
+    card.addEventListener('click', () => openWeeklyReport(card.dataset.ws, true));
+  });
 }
 
 let weeklySubState = { loggedIn: false, subscribed: false };
@@ -3553,16 +3751,23 @@ async function toggleWeeklySubscribe(){
 }
 
 // 打开周报全文页（独立 panel，复用详情页返回按钮机制）
-async function openWeeklyReport(weekStart){
-  const activePanel = document.querySelector('.panel.active');
-  detailOrigin = {
-    panel: activePanel ? activePanel.id.replace('panel-', '') : 'report',
-    scrollY: window.scrollY
-  };
+async function openWeeklyReport(weekStart, fromList){
+  // 从列表进入全文：返回时重新渲染列表；从报告页卡片进入：返回报告页
+  if(!fromList){
+    const activePanel = document.querySelector('.panel.active');
+    detailOrigin = {
+      panel: activePanel ? activePanel.id.replace('panel-', '') : 'report',
+      scrollY: window.scrollY
+    };
+  }else{
+    detailOrigin = { panel: 'weekly', scrollY: 0, reRender: 'weeklyList' };
+  }
   const backBtn = document.getElementById('detailBackBtn');
   if(backBtn) backBtn.style.display = 'flex';
   const body = document.getElementById('weeklyFullBody');
   const meta = document.getElementById('weeklyFullMeta');
+  const titleEl = document.getElementById('weeklyFullTitle');
+  if(titleEl) titleEl.textContent = '树洞周报';
   if(body){
     body.innerHTML = `<div style="text-align:center;padding:48px 0;color:var(--fg-secondary)"><span class="spinner spinner-lg"></span><div style="margin-top:12px;font-size:13px;font-weight:300">加载中…</div></div>`;
   }

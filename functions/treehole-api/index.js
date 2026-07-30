@@ -66,6 +66,9 @@ const AGENT_GLOBAL_PER_MIN = 60;  // 全局每分钟（保护小机器）
 const AGENT_MAX_TOKENS_PER_USER = 3;  // 每账号最多 Token 数
 const AGENT_LIST_LIMIT = 30;      // 列表接口单次最大返回数
 const AGENT_DIGEST_DEFAULT_DAYS = 3;  // digest 默认回看天数
+// Agent 安全：Token 绑定首次使用的 IP+UA 指纹（防止传播后任意校外用户使用）
+const AGENT_FINGERPRINT_BIND_WINDOW_SEC = 7 * 24 * 3600; // 首次使用后 7 天内仍允许指纹锁定完成（兜底）
+const AGENT_FINGERPRINT_GRACE_MIN = 5; // 指纹建立缓冲期（分钟）：该期间允许多个 IP 绑定（避免本地 npx/客户端预热误锁）
 
 // 输入限制
 const MAX_KEYWORD_LEN = 80;
@@ -576,7 +579,13 @@ function ensureDb() {
       last_used_at INTEGER DEFAULT 0,
       call_count INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL,
-      revoked_at INTEGER DEFAULT 0       -- 0=有效，>0=已撤销
+      revoked_at INTEGER DEFAULT 0,      -- 0=有效，>0=已撤销
+      -- 新增：安全绑定字段（首次使用 IP/UA 指纹，防止 Token 被校外扩散滥用）
+      bound_ip TEXT DEFAULT '',
+      bound_ua_hash TEXT DEFAULT '',
+      bound_at INTEGER DEFAULT 0,
+      -- 新增：短期自动过期（默认 90 天不使用自动失效，降低泄露窗口）
+      expire_at INTEGER DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
     CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_email);
@@ -594,6 +603,13 @@ function ensureDb() {
   try {
     db.exec("ALTER TABLE verify_codes ADD COLUMN ip TEXT DEFAULT ''");
     db.exec("CREATE INDEX IF NOT EXISTS idx_verify_codes_ip ON verify_codes(ip, sent_at)");
+  } catch (e) { /* 字段已存在则忽略 */ }
+  // 兼容已存在的表：补充 agent_tokens 安全绑定字段
+  try {
+    db.exec("ALTER TABLE agent_tokens ADD COLUMN bound_ip TEXT DEFAULT ''");
+    db.exec("ALTER TABLE agent_tokens ADD COLUMN bound_ua_hash TEXT DEFAULT ''");
+    db.exec("ALTER TABLE agent_tokens ADD COLUMN bound_at INTEGER DEFAULT 0");
+    db.exec("ALTER TABLE agent_tokens ADD COLUMN expire_at INTEGER DEFAULT 0");
   } catch (e) { /* 字段已存在则忽略 */ }
   console.log("[db] 数据库已连接（可写模式）:", DB_PATH);
   return db;
@@ -1401,9 +1417,43 @@ function hashAgentToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+/** UA → SHA-256 hash（绑定指纹用，不存原文） */
+function hashUserAgent(ua) {
+  const s = (ua || "").toString().trim().slice(0, 400);
+  return crypto.createHash("sha256").update(s).digest("hex");
+}
+
 /** 邀请码用户不开放 Agent 功能 */
 function canUseAgent(user_email) {
   return !!(user_email && !user_email.startsWith("invite:"));
+}
+
+/** 判断邮箱是否为"当前站点允许的校内邮箱"。
+ *  默认白名单：pku.edu.cn / stu.pku.edu.cn（北大本部 + 学生邮箱）。
+ *  可通过环境变量 AGENT_CAMPUS_EMAIL_DOMAINS 追加（逗号分隔），追加的域名与默认白名单取并集。
+ */
+const DEFAULT_CAMPUS_DOMAINS = ["pku.edu.cn", "stu.pku.edu.cn"];
+function isCampusEmail(user_email) {
+  if (!user_email) return false;
+  if (user_email.startsWith("invite:")) return false;
+  const extra = (process.env.AGENT_CAMPUS_EMAIL_DOMAINS || "")
+    .split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const allowDomains = Array.from(new Set([...DEFAULT_CAMPUS_DOMAINS, ...extra]));
+  const at = user_email.lastIndexOf("@");
+  if (at < 0) return false;
+  const domain = user_email.slice(at + 1).toLowerCase();
+  return allowDomains.some((d) => domain === d || domain.endsWith("." + d));
+}
+
+/** 判断用户账号是否处于封禁状态（封禁用户的 Token 也应失效） */
+function isUserBanned(user_email) {
+  if (!user_email) return true;
+  try {
+    const row = queryOne("SELECT banned FROM users WHERE email = ?", [user_email]);
+    return !!(row && row.banned && row.banned > 0);
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -1414,19 +1464,98 @@ function authAgent(req) {
   const auth = req.headers["authorization"] || "";
   const m = auth.match(/^Bearer\s+(ath_\S+)$/i);
   if (!m) return null;
-  const tokenHash = hashAgentToken(m[1]);
+  const token = m[1];
+  const tokenHash = hashAgentToken(token);
   const row = queryOne(
-    "SELECT id, user_email, revoked_at FROM agent_tokens WHERE token_hash = ?", [tokenHash]
+    "SELECT id, user_email, revoked_at, bound_ip, bound_ua_hash, bound_at, expire_at FROM agent_tokens WHERE token_hash = ?",
+    [tokenHash]
   );
-  if (!row || row.revoked_at > 0) return null;
+  if (!row) return null;
+  if (row.revoked_at > 0) return null;
   if (!canUseAgent(row.user_email)) return null;
-  // 异步更新使用统计（不阻塞响应）
+  // 附加身份校验：封禁用户的 Token 一律不可用
+  if (isUserBanned(row.user_email)) return null;
+  // 附加身份校验：仅校内邮箱（若配置了白名单）才能使用 Agent，防止非校内用户通过邀请码绕过
+  if (!isCampusEmail(row.user_email)) return null;
+
   const now = Math.floor(Date.now() / 1000);
+  // 过期机制：expire_at > 0 表示有过期时间；超过过期日则直接失效，降低泄露窗口
+  if (row.expire_at > 0 && now > row.expire_at) return null;
+
+  // 指纹绑定（IP + UA 哈希）：防止一个 Token 被传播给大量校外用户滥用
+  const ip = getClientIp(req);
+  const uaRaw = (req.headers["user-agent"] || "").toString();
+  const uaHash = hashUserAgent(uaRaw);
+  let boundIp = (row.bound_ip || "").toString();
+  let boundUa = (row.bound_ua_hash || "").toString();
+  let boundAt = row.bound_at || 0;
+
+  if (!boundIp && !boundUa) {
+    // 首次使用：建立指纹（记录 IP、UA 哈希与时间），并给一个 grace period 便于客户端预热
+    try {
+      db.prepare(
+        "UPDATE agent_tokens SET bound_ip = ?, bound_ua_hash = ?, bound_at = ? WHERE id = ?"
+      ).run(ip, uaHash, now, row.id);
+      boundIp = ip;
+      boundUa = uaHash;
+      boundAt = now;
+    } catch (e) { /* ignore */ }
+  } else {
+    // 已绑定：校验；但在缓冲期内仍允许绑定更新（兼容 npx 多次冷启动/本地切换网络的情况）
+    const graceUntil = (boundAt || now) + AGENT_FINGERPRINT_GRACE_MIN * 60;
+    const ipMatches = !boundIp || boundIp === ip;
+    const uaMatches = !boundUa || boundUa === uaHash;
+    if (now <= graceUntil) {
+      // 缓冲期：若 IP/UA 变化，则把最常见的那个"固定下来"——简单策略，用新值覆盖（保守不锁死）
+      if (!ipMatches || !uaMatches) {
+        try {
+          db.prepare(
+            "UPDATE agent_tokens SET bound_ip = ?, bound_ua_hash = ?, bound_at = ? WHERE id = ?"
+          ).run(ip, uaHash, Math.min(boundAt || now, now), row.id);
+        } catch (e) { /* ignore */ }
+      }
+    } else {
+      // 缓冲期之后：指纹必须匹配（二选一命中即可，宽松兼容 VPN/切换浏览器）
+      const anyMatch = ipMatches || uaMatches;
+      if (!anyMatch) {
+        // 可能被盗用：给管理员告警，但不直接在响应里泄露原因
+        try {
+          alertAdmin(
+            "warn",
+            "agent_fingerprint_mismatch",
+            `Agent Token 指纹不匹配（可能已传播）`,
+            `用户: ${row.user_email}\nTokenId: ${row.id}\n绑定IP: ${maskIp(boundIp)} / 绑定UA: ${shortHash(boundUa)}\n当前IP: ${maskIp(ip)} / 当前UA: ${shortHash(uaHash)}`,
+            ip
+          );
+        } catch (e) { /* ignore */ }
+        return null;
+      }
+    }
+  }
+
+  // 异步更新使用统计（不阻塞响应）
   try {
     db.prepare("UPDATE agent_tokens SET last_used_at = ?, call_count = call_count + 1 WHERE id = ?")
       .run(now, row.id);
   } catch (e) { /* ignore */ }
   return { email: row.user_email, tokenId: row.id, tokenHash };
+}
+
+/** 轻量 IP 脱敏（显示前两段 + *.*），仅用于日志/告警 */
+function maskIp(ip) {
+  if (!ip) return "";
+  if (ip === "unknown" || ip === "::1" || ip === "127.0.0.1") return ip;
+  const parts = ip.split(".");
+  if (parts.length === 4) return `${parts[0]}.${parts[1]}.*.*`;
+  const v6 = ip.split(":");
+  if (v6.length >= 2) return `${v6[0]}:${v6[1]}::****`;
+  return ip.slice(0, 6) + "****";
+}
+
+/** hash 的短展示（用于告警快速比对） */
+function shortHash(h) {
+  if (!h) return "";
+  return h.toString().slice(0, 10) + "…";
 }
 
 /** 帖子列表字段精简（正文截断 140 字，省 Agent token） */
@@ -1572,15 +1701,17 @@ function agentError(res, status, error, message) {
 /** Agent Token 管理：列出当前用户的有效 Token（不含明文） */
 function handleAgentTokenList(email) {
   const rows = queryAll(
-    "SELECT id, label, created_at, last_used_at, call_count FROM agent_tokens WHERE user_email = ? AND revoked_at = 0 ORDER BY created_at DESC",
+    "SELECT id, label, created_at, last_used_at, call_count, expire_at FROM agent_tokens WHERE user_email = ? AND revoked_at = 0 ORDER BY created_at DESC",
     [email]
   );
   return { ok: true, tokens: rows };
 }
 
 /** Agent Token 管理：创建新 Token，返回明文一次 */
-function handleAgentTokenCreate(email, label) {
+function handleAgentTokenCreate(email, label, opts = {}) {
   if (!canUseAgent(email)) throw new Error("此功能仅校园邮箱用户可用");
+  if (!isCampusEmail(email)) throw new Error("Agent 功能仅对校内邮箱开放");
+  if (isUserBanned(email)) throw new Error("当前账号受限，无法创建 Token");
   const count = queryOne(
     "SELECT COUNT(*) as c FROM agent_tokens WHERE user_email = ? AND revoked_at = 0", [email]
   ).c;
@@ -1591,10 +1722,22 @@ function handleAgentTokenCreate(email, label) {
   const plain = generateAgentToken();
   const hash = hashAgentToken(plain);
   const now = Math.floor(Date.now() / 1000);
+  // 默认有效期：从创建日起 180 天。过期后自动失效，极大降低"传播出去的 Token 长期可用"的风险。
+  const defaultTtlDays = 180;
+  const ttlDays = Number.isFinite(opts.ttlDays) && opts.ttlDays > 0 ? Math.min(Math.floor(opts.ttlDays), defaultTtlDays) : defaultTtlDays;
+  const expireAt = now + ttlDays * 86400;
   db.prepare(
-    "INSERT INTO agent_tokens (user_email, token_hash, label, created_at) VALUES (?,?,?,?)"
-  ).run(email, hash, cleanLabel, now);
-  return { ok: true, token: plain, label: cleanLabel, config_snippet: buildMcpConfig(plain) };
+    "INSERT INTO agent_tokens (user_email, token_hash, label, created_at, expire_at) VALUES (?,?,?,?,?)"
+  ).run(email, hash, cleanLabel, now, expireAt);
+  return {
+    ok: true,
+    token: plain,
+    label: cleanLabel,
+    ttl_days: ttlDays,
+    expire_at: expireAt,
+    config_snippet: buildMcpConfig(plain),
+    ai_instruction: buildMcpAiInstruction(plain),
+  };
 }
 
 /** Agent Token 管理：撤销 */
@@ -1623,6 +1766,20 @@ function buildMcpConfig(token) {
       },
     },
   };
+}
+
+/**
+ * 生成 0 门槛的"对 AI 说的话"文本：精简版，AI 拿到即可自行完成配置。
+ */
+function buildMcpAiInstruction(token) {
+  const baseUrl = PUBLIC_BASE_URL || "";
+  return (
+`帮我安装 autothole-mcp（北大树洞 MCP 服务），配置信息如下，请直接写入 MCP 配置文件并完成安装，无需再问我确认：
+
+${JSON.stringify(buildMcpConfig(token), null, 2)}
+
+安装后请重启/重载 MCP 服务，然后列出已注册的 autothole 工具确认成功。注意：Token 不要写到聊天记录或日志里，只放到配置文件的 env 字段中。`
+  );
 }
 
 // ==================== 认证 API ====================
@@ -1998,7 +2155,7 @@ function handleFavoriteStatus(pids, req) {
 }
 
 // ==================== 关键词订阅 ====================
-const MAX_SUBS_PER_USER = 3;       // 每人最多 3 个关键词
+const MAX_SUBS_PER_USER = 5;       // 每人最多 5 个关键词
 const SUB_KEYWORD_MIN = 1;
 const SUB_KEYWORD_MAX = 30;
 const SUB_SCAN_INTERVAL_MS = 2 * 60_000; // 每 2 分钟扫描一次
@@ -2662,18 +2819,23 @@ function handleAdminUserDetail(query) {
   };
 }
 
-/** 封禁用户 */
+/** 封禁用户：同步撤销该用户的一切"对外能力"，避免封了人但他的 Token/订阅还能继续跑 */
 function handleAdminUserBan(body) {
   const email = (body.email || "").trim();
   if (!email) throw new Error("缺少 email 参数");
   const user = queryOne("SELECT email FROM users WHERE email = ?", [email]);
   if (!user) throw new Error("用户不存在");
   const now = Math.floor(Date.now() / 1000);
+  // 1) 标记封禁：登录态立即失效（requireAuth 会拒绝）
   db.prepare("UPDATE users SET banned = 1, banned_at = ? WHERE email = ?").run(now, email);
-  // 同时撤销该用户所有 Agent Token
-  db.prepare("UPDATE agent_tokens SET revoked_at = ? WHERE user_email = ? AND revoked_at IS NULL").run(now, email);
-  console.log(`[admin] 封禁用户: ${email}`);
-  alertAdmin("warn", "suspicious", "用户被封禁", `邮箱: ${email}`, "");
+  // 2) 撤销该用户所有 Agent Token（authAgent 会因 revoked_at>0 / isUserBanned 双重拒绝）
+  db.prepare("UPDATE agent_tokens SET revoked_at = ? WHERE user_email = ? AND revoked_at = 0").run(now, email);
+  // 3) 删除该用户所有关键词订阅（不再产生新的命中推送邮件）
+  db.prepare("DELETE FROM subscriptions WHERE user_email = ?").run(email);
+  // 4) 取消该用户的树洞周报邮件订阅
+  db.prepare("DELETE FROM weekly_report_subscriptions WHERE user_email = ?").run(email);
+  console.log(`[admin] 封禁用户(含级联撤销): ${email}`);
+  alertAdmin("warn", "suspicious", "用户被封禁", `邮箱: ${email}\n已同步撤销：Agent Token / 关键词订阅 / 周报订阅`, "");
   return { success: true };
 }
 
