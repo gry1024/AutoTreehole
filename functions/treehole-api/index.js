@@ -2995,7 +2995,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = handleAuthVerify(body, ip);
         // 设置 HttpOnly Cookie
-        res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
+        res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Secure; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
         sendJson(res, 200, result);
       } catch (e) { sendError(res, 400, e.message); }
       return;
@@ -3016,7 +3016,7 @@ const server = http.createServer(async (req, res) => {
     if (route === "auth/logout") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
       // 清除 HttpOnly Cookie，使前端令牌立即失效
-      res.setHeader("Set-Cookie", "treehole_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax");
+      res.setHeader("Set-Cookie", "treehole_token=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax");
       sendJson(res, 200, { success: true });
       return;
     }
@@ -3027,7 +3027,7 @@ const server = http.createServer(async (req, res) => {
       await ensureDb();
       try {
         const result = handleInviteLogin(body, req);
-        res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
+        res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Secure; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
         sendJson(res, 200, result);
       } catch (e) { sendError(res, 400, e.message); }
       return;
@@ -3154,9 +3154,10 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 数据上报接口（需要令牌）
+    // 数据上报接口（需要令牌 + 限流，防止刷量操纵榜单）
     if (route === "track/view") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       sendJson(res, 200, handleTrackView(body, req));
@@ -3164,12 +3165,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === "track/duration") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       sendJson(res, 200, handleTrackDuration(body, req));
       return;
     }
     if (route === "track/heartbeat") {
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       await ensureDb();
       sendJson(res, 200, handleTrackHeartbeat(req));
       return;
@@ -3248,8 +3251,10 @@ const server = http.createServer(async (req, res) => {
     if (route.startsWith("admin/")) {
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       const adminKey = (query.key || getCookie(req, "admin_key") || "").toString();
+      // fail-closed：ADMIN_PASSWORD 为空或未设置时一律拒绝（防止空密码绕过）
+      if (!ADMIN_PASSWORD || !adminKey) { sendError(res, 403, "无权访问"); return; }
       const a = Buffer.from(adminKey);
-      const b = Buffer.from(ADMIN_PASSWORD || "");
+      const b = Buffer.from(ADMIN_PASSWORD);
       if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
         sendError(res, 403, "无权访问");
         return;
@@ -3447,6 +3452,10 @@ setInterval(() => {
 // 启动前强校验：TOKEN_SECRET 不能为空或默认值（否则任何人可离线伪造登录令牌）
 if (!TOKEN_SECRET || TOKEN_SECRET.length < 16 || TOKEN_SECRET.startsWith("please_change")) {
   console.error("[FATAL] TOKEN_SECRET 未设置或过短或仍为默认值，拒绝启动。请生成随机密钥写入 .env");
+  process.exit(1);
+}
+if (!ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12) {
+  console.error("[FATAL] ADMIN_PASSWORD 未设置或过短（至少 12 位），拒绝启动。请在 .env 中设置管理员密码");
   process.exit(1);
 }
 server.listen(PORT, "127.0.0.1", () => { console.log(`[treehole-api] 服务启动，监听 127.0.0.1:${PORT}`); });
