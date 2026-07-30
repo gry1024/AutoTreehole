@@ -124,6 +124,79 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
   .stat-card:nth-child(2){border-right:none}
   .stat-card:nth-child(n+3){border-top:1px solid var(--divider-subtle)}
 }
+
+/* 顶部导航栏 */
+.admin-nav{max-width:1100px;margin:0 auto;padding:0 24px;display:flex;gap:24px;
+  border-top:1px solid var(--divider-subtle)}
+.admin-nav-btn{background:none;border:none;font-family:var(--font-sans);font-size:14px;
+  color:var(--fg-tertiary);padding:12px 0;cursor:pointer;border-bottom:2px solid transparent;
+  margin-bottom:-1px;transition:color .15s;letter-spacing:0.01em}
+.admin-nav-btn:hover{color:var(--fg-secondary)}
+.admin-nav-btn.active{color:var(--fg);border-bottom-color:var(--fg);font-weight:500}
+
+/* 用户管理 */
+.user-search-wrap{display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.user-search-btn{padding:8px 18px;border-radius:var(--radius-sm);background:var(--fg);
+  color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;
+  font-family:var(--font-sans);white-space:nowrap}
+.user-search-btn:hover{background:#000}
+.user-status{font-size:11px;padding:2px 8px;border-radius:3px;font-weight:500;
+  font-family:var(--font-sans);white-space:nowrap}
+.user-status.normal{background:#E8F5EE;color:#34C759}
+.user-status.banned{background:#F8E8E8;color:#FF3B30}
+.user-action-btn{font-size:12px;cursor:pointer;background:none;border:none;
+  font-family:var(--font-sans);padding:0 4px}
+.user-action-btn.detail{color:var(--accent-blue)}
+.user-action-btn.detail:hover{opacity:.7}
+.user-action-btn.ban{color:var(--danger)}
+.user-action-btn.ban:hover{opacity:.7}
+.user-pagination{display:flex;align-items:center;justify-content:space-between;
+  margin-top:16px;font-size:13px;color:var(--fg-secondary);font-family:var(--font-sans);
+  flex-wrap:wrap;gap:12px}
+.user-pagination button{background:none;border:1px solid var(--divider);
+  border-radius:var(--radius-sm);padding:6px 14px;font-size:12px;cursor:pointer;
+  font-family:var(--font-sans);color:var(--fg)}
+.user-pagination button:hover:not(:disabled){border-color:var(--fg)}
+.user-pagination button:disabled{opacity:.4;cursor:not-allowed}
+
+/* 用户详情弹窗 */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);
+  z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal-card{background:var(--bg-elevated);border-radius:var(--radius);max-width:800px;
+  width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.modal-header{position:sticky;top:0;background:var(--bg-elevated);display:flex;
+  align-items:center;justify-content:space-between;padding:18px 24px;
+  border-bottom:1px solid var(--divider-subtle);z-index:1}
+.modal-header h2{font-size:17px;font-weight:600;letter-spacing:-0.02em;word-break:break-all;
+  margin-right:16px}
+.modal-close{background:none;border:none;font-size:24px;color:var(--fg-secondary);
+  cursor:pointer;line-height:1;padding:0 4px;flex:none}
+.modal-close:hover{color:var(--fg)}
+.modal-body{padding:24px}
+.modal-section{margin-bottom:24px}
+.modal-section:last-child{margin-bottom:0}
+.modal-section-title{font-size:14px;font-weight:600;color:var(--fg);margin-bottom:10px;
+  letter-spacing:-0.01em}
+.modal-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 24px;
+  font-size:13px;font-family:var(--font-sans)}
+.modal-info-item{display:flex;flex-direction:column;gap:2px}
+.modal-info-label{font-size:11px;color:var(--fg-secondary);letter-spacing:0.04em}
+.modal-info-value{color:var(--fg);font-variant-numeric:tabular-nums}
+.modal-chips{display:flex;flex-wrap:wrap;gap:6px}
+.modal-chip{display:inline-block;background:#F0EBF8;color:#8B7BB8;border-radius:3px;
+  padding:3px 10px;font-size:12px;font-family:var(--font-sans)}
+.modal-empty{color:var(--fg-tertiary);font-size:13px;font-family:var(--font-sans);padding:8px 0}
+.modal-footer{position:sticky;bottom:0;background:var(--bg-elevated);padding:16px 24px;
+  border-top:1px solid var(--divider-subtle);display:flex;justify-content:flex-end;gap:12px}
+.modal-ban-btn{padding:9px 20px;border-radius:var(--radius-sm);background:var(--danger);
+  color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;
+  font-family:var(--font-sans)}
+.modal-ban-btn:hover{opacity:.85}
+
+@media(max-width:768px){
+  .modal-info-grid{grid-template-columns:repeat(2,1fr)}
+  .admin-nav{gap:20px}
+}
 </style>
 </head>
 <body>
@@ -146,8 +219,14 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       <h1>AutoTreehole 数据后台</h1>
       <button class="refresh-btn" onclick="loadData()">刷新数据</button>
     </div>
+    <nav class="admin-nav">
+      <button class="admin-nav-btn active" data-tab="overview" onclick="switchTab('overview')">概览</button>
+      <button class="admin-nav-btn" data-tab="users" onclick="switchTab('users')">用户管理</button>
+      <button class="admin-nav-btn" data-tab="invite" onclick="switchTab('invite')">邀请码</button>
+    </nav>
   </div>
   <div class="container">
+    <div id="tab-overview">
     <!-- 概览 -->
     <div class="stats-grid" id="overviewGrid"></div>
 
@@ -309,6 +388,8 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    </div>
+    <div id="tab-invite" style="display:none">
     <!-- 邀请码管理 -->
     <div class="table-section">
       <div class="table-title">邀请码管理</div>
@@ -337,6 +418,24 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
         <thead><tr><th>邀请码</th><th>备注</th><th>创建时间</th><th>状态</th><th>使用者</th><th>使用时间</th><th></th></tr></thead>
         <tbody id="inviteListBody"></tbody>
       </table>
+    </div>
+    </div>
+
+    <!-- 用户管理 -->
+    <div id="tab-users" style="display:none">
+      <div class="table-section">
+        <div class="table-title">用户管理</div>
+        <div class="chart-sub">所有注册用户，可搜索邮箱</div>
+        <div class="user-search-wrap">
+          <input type="text" id="userSearchInput" class="invite-input" placeholder="搜索邮箱…" style="flex:1;min-width:240px;max-width:400px">
+          <button class="user-search-btn" onclick="loadUsers(1)">搜索</button>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>邮箱</th><th>注册时间</th><th>最后访问</th><th>访问次数</th><th>收藏</th><th>订阅</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="userListBody"></tbody>
+        </table>
+        <div class="user-pagination" id="userPagination"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -942,6 +1041,333 @@ function copyCode(code){
 }
 
 document.getElementById('inviteCreateBtn').addEventListener('click', createInvite);
+
+/* ==================== Tab 导航切换 ==================== */
+function switchTab(tabName){
+  // 切换导航按钮选中状态
+  document.querySelectorAll('.admin-nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  // 切换显示对应 tab div
+  document.getElementById('tab-overview').style.display = tabName === 'overview' ? '' : 'none';
+  document.getElementById('tab-users').style.display = tabName === 'users' ? '' : 'none';
+  document.getElementById('tab-invite').style.display = tabName === 'invite' ? '' : 'none';
+  // 切换到用户管理时自动加载用户列表（仅首次）
+  if(tabName === 'users' && !window._usersLoaded){
+    loadUsers(1);
+    window._usersLoaded = true;
+  }
+}
+
+/* ==================== 用户管理 ==================== */
+let currentUsersPage = 1; // 当前用户列表页码
+
+// 邀请码用户 email 以 invite: 开头，显示为「邀请码用户」
+function displayName(email){
+  return (email && email.startsWith('invite:')) ? '邀请码用户' : esc(email);
+}
+
+// 秒级时长格式化为 xh ym 或 xm
+function formatDuration(sec){
+  if(!sec) return '0m';
+  if(sec >= 3600) return `${Math.floor(sec/3600)}h ${Math.floor((sec%3600)/60)}m`;
+  return `${Math.floor(sec/60)}m`;
+}
+
+// 加载用户列表
+async function loadUsers(page = 1){
+  currentUsersPage = page;
+  const search = document.getElementById('userSearchInput').value.trim();
+  const body = document.getElementById('userListBody');
+  body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#86868B;padding:24px">加载中…</td></tr>';
+  try{
+    const resp = await fetch(`${API_BASE}/admin/users?key=${encodeURIComponent(adminKey)}&page=${page}&pageSize=50${search ? '&search=' + encodeURIComponent(search) : ''}`);
+    if(!resp.ok) throw new Error('加载失败');
+    const data = await resp.json();
+    renderUserList(data, page);
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:24px">加载失败：${esc(e.message)}</td></tr>`;
+    document.getElementById('userPagination').innerHTML = '';
+  }
+}
+
+// 渲染用户列表表格 + 分页
+function renderUserList(data, page){
+  const body = document.getElementById('userListBody');
+  const users = data.users || [];
+  if(users.length === 0){
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#86868B;padding:24px">暂无用户</td></tr>';
+    document.getElementById('userPagination').innerHTML = '';
+    return;
+  }
+  body.innerHTML = users.map(u => {
+    const email = u.email;
+    const status = u.banned
+      ? '<span class="user-status banned">已封禁</span>'
+      : '<span class="user-status normal">正常</span>';
+    // 封禁时显示「解封」，正常时显示「封禁」，均为红色
+    const banBtn = u.banned
+      ? `<button class="user-action-btn ban" onclick="unbanUser('${esc(email)}')">解封</button>`
+      : `<button class="user-action-btn ban" onclick="banUser('${esc(email)}')">封禁</button>`;
+    return `<tr>
+      <td>${displayName(email)}</td>
+      <td>${fmtTime(u.verifiedAt)}</td>
+      <td>${fmtTime(u.lastVisit)}</td>
+      <td>${u.visitCount || 0}</td>
+      <td>${u.favCount || 0}</td>
+      <td>${u.subCount || 0}</td>
+      <td>${status}</td>
+      <td>
+        <button class="user-action-btn detail" onclick="loadUserDetail('${esc(email)}')">详情</button>
+        ${banBtn}
+      </td>
+    </tr>`;
+  }).join('');
+  // 分页控件
+  const total = data.total || 0;
+  const pageSize = data.pageSize || 50;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pg = document.getElementById('userPagination');
+  pg.innerHTML = `
+    <span>共 ${total} 位用户，第 ${page}/${totalPages} 页</span>
+    <div>
+      <button onclick="loadUsers(${page-1})" ${page<=1?'disabled':''}>上一页</button>
+      <button onclick="loadUsers(${page+1})" ${page>=totalPages?'disabled':''} style="margin-left:8px">下一页</button>
+    </div>`;
+}
+
+// 加载用户详情并弹出弹窗
+async function loadUserDetail(email){
+  try{
+    const resp = await fetch(`${API_BASE}/admin/user/detail?key=${encodeURIComponent(adminKey)}&email=${encodeURIComponent(email)}`);
+    if(!resp.ok) throw new Error('加载失败');
+    const data = await resp.json();
+    renderUserDetail(data);
+  }catch(e){
+    alert('加载用户详情失败：' + e.message);
+  }
+}
+
+// 渲染用户详情弹窗
+function renderUserDetail(data){
+  const u = data.user || {};
+  const email = u.email || '';
+  const emailDisplay = displayName(email);
+  const favs = data.favorites || [];
+  const subs = data.subscriptions || [];
+  const views = data.views || [];
+  const visits = data.visits || [];
+  const reports = data.reports || [];
+  const tokens = data.tokens || [];
+
+  // 基本信息字段
+  const pledged = u.pledged ? '<span style="color:#34C759">已承诺</span>' : '<span style="color:#86868B">未承诺</span>';
+  const banStatus = u.banned
+    ? `<span style="color:var(--danger)">已封禁（${fmtTime(u.bannedAt)}）</span>`
+    : '<span style="color:#34C759">正常</span>';
+
+  // 收藏列表（最多展示前 50 条）
+  const favsHtml = favs.length === 0 ? '<div class="modal-empty">暂无收藏</div>' : `
+    <table class="data-table">
+      <thead><tr><th>洞号</th><th>分类</th><th>收藏量</th><th>回复数</th><th>内容摘要</th></tr></thead>
+      <tbody>
+        ${favs.slice(0,50).map(f => `<tr>
+          <td><a href="/?pid=${f.pid}" target="_blank">#${f.pid}</a></td>
+          <td>${esc(f.category || '其他')}</td>
+          <td>${f.likenum || 0}</td>
+          <td>${f.reply || 0}</td>
+          <td class="text-cell">${esc((f.text||'').slice(0,60))}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${favs.length > 50 ? `<div class="modal-empty">共 ${favs.length} 条，仅展示前 50 条</div>` : ''}
+  `;
+
+  // 订阅关键词（chip 标签展示）
+  const subsHtml = subs.length === 0 ? '<div class="modal-empty">暂无订阅</div>' : `
+    <div class="modal-chips">
+      ${subs.map(s => `<span class="modal-chip">${esc(s.keyword)}</span>`).join('')}
+    </div>
+  `;
+
+  // 浏览历史（最多展示前 50 条）
+  const viewsHtml = views.length === 0 ? '<div class="modal-empty">暂无浏览记录</div>' : `
+    <table class="data-table">
+      <thead><tr><th>洞号</th><th>分类</th><th>浏览时间</th><th>停留时长</th><th>内容摘要</th></tr></thead>
+      <tbody>
+        ${views.slice(0,50).map(v => `<tr>
+          <td><a href="/?pid=${v.pid}" target="_blank">#${v.pid}</a></td>
+          <td>${esc(v.category || '其他')}</td>
+          <td>${fmtTime(v.viewedAt)}</td>
+          <td>${formatDuration(v.duration)}</td>
+          <td class="text-cell">${esc((v.text||'').slice(0,60))}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${views.length > 50 ? `<div class="modal-empty">共 ${views.length} 条，仅展示前 50 条</div>` : ''}
+  `;
+
+  // 访问日志
+  const visitsHtml = visits.length === 0 ? '<div class="modal-empty">暂无访问日志</div>' : `
+    <table class="data-table">
+      <thead><tr><th>IP</th><th>进入时间</th><th>最后活跃</th></tr></thead>
+      <tbody>
+        ${visits.map(v => `<tr>
+          <td>${esc(v.ip||'-')}</td>
+          <td>${fmtTime(v.enteredAt)}</td>
+          <td>${fmtTime(v.lastActive)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+
+  // AI 报告调用
+  const reportsHtml = reports.length === 0 ? '<div class="modal-empty">暂无 AI 报告调用</div>' : `
+    <table class="data-table">
+      <thead><tr><th>时间</th><th>IP</th><th>服务商</th><th>模式</th><th>状态</th></tr></thead>
+      <tbody>
+        ${reports.map(r => {
+          const modeLabel = {week:'全周分析', keyword:'关键词专题', direct:'直连模式', proxy:'代理模式'}[r.mode] || r.mode || '-';
+          const status = r.success ? '<span style="color:#34C759">成功</span>' : '<span style="color:var(--danger)">失败</span>';
+          return `<tr>
+            <td>${fmtTime(r.createdAt)}</td>
+            <td>${esc(r.ip||'-')}</td>
+            <td>${esc(r.provider||'-')}</td>
+            <td>${esc(modeLabel)}</td>
+            <td>${status}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+
+  // Agent Token
+  const tokensHtml = tokens.length === 0 ? '<div class="modal-empty">暂无 Agent Token</div>' : `
+    <table class="data-table">
+      <thead><tr><th>标签</th><th>创建时间</th><th>最后使用</th><th>调用次数</th><th>状态</th></tr></thead>
+      <tbody>
+        ${tokens.map(t => {
+          const status = t.revokedAt ? '<span style="color:var(--danger)">已撤销</span>' : '<span style="color:#34C759">有效</span>';
+          return `<tr>
+            <td>${esc(t.label||'-')}</td>
+            <td>${fmtTime(t.createdAt)}</td>
+            <td>${fmtTime(t.lastUsedAt)}</td>
+            <td>${t.callCount || 0}</td>
+            <td>${status}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+
+  // 底部封禁/解封按钮
+  const banBtnText = u.banned ? '解封' : '封禁';
+  const banAction = u.banned ? 'unbanUser' : 'banUser';
+
+  const html = `
+    <div class="modal-overlay" id="userDetailModal" onclick="if(event.target.id==='userDetailModal')closeUserModal()">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>${esc(emailDisplay)}</h2>
+          <button class="modal-close" onclick="closeUserModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-section">
+            <div class="modal-section-title">基本信息</div>
+            <div class="modal-info-grid">
+              <div class="modal-info-item"><span class="modal-info-label">注册时间</span><span class="modal-info-value">${fmtTime(u.verifiedAt)}</span></div>
+              <div class="modal-info-item"><span class="modal-info-label">最后访问</span><span class="modal-info-value">${fmtTime(u.lastVisit)}</span></div>
+              <div class="modal-info-item"><span class="modal-info-label">访问次数</span><span class="modal-info-value">${u.visitCount || 0}</span></div>
+              <div class="modal-info-item"><span class="modal-info-label">累计时长</span><span class="modal-info-value">${formatDuration(u.totalDuration)}</span></div>
+              <div class="modal-info-item"><span class="modal-info-label">承诺状态</span><span class="modal-info-value">${pledged}</span></div>
+              <div class="modal-info-item"><span class="modal-info-label">封禁状态</span><span class="modal-info-value">${banStatus}</span></div>
+            </div>
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">收藏列表${favs.length ? `（${favs.length}）` : ''}</div>
+            ${favsHtml}
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">订阅关键词${subs.length ? `（${subs.length}）` : ''}</div>
+            ${subsHtml}
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">浏览历史${views.length ? `（${views.length}）` : ''}</div>
+            ${viewsHtml}
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">访问日志${visits.length ? `（${visits.length}）` : ''}</div>
+            ${visitsHtml}
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">AI 报告调用${reports.length ? `（${reports.length}）` : ''}</div>
+            ${reportsHtml}
+          </div>
+          <div class="modal-section">
+            <div class="modal-section-title">Agent Token${tokens.length ? `（${tokens.length}）` : ''}</div>
+            ${tokensHtml}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-ban-btn" onclick="${banAction}('${esc(email)}');closeUserModal()">${banBtnText}</button>
+        </div>
+      </div>
+    </div>
+  `;
+  // 移除已有弹窗再插入新弹窗
+  closeUserModal();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// 关闭用户详情弹窗
+function closeUserModal(){
+  const m = document.getElementById('userDetailModal');
+  if(m) m.remove();
+}
+
+// 封禁用户
+async function banUser(email){
+  if(!confirm(`确认封禁用户 ${displayName(email)}？被封禁用户将无法登录和使用本站。`)) return;
+  try{
+    const resp = await fetch(`${API_BASE}/admin/user/ban?key=${encodeURIComponent(adminKey)}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    if(!resp.ok){
+      const err = await resp.json();
+      throw new Error(err.error || '封禁失败');
+    }
+    // 刷新列表
+    await loadUsers(currentUsersPage);
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+// 解封用户
+async function unbanUser(email){
+  if(!confirm(`确认解封用户 ${displayName(email)}？`)) return;
+  try{
+    const resp = await fetch(`${API_BASE}/admin/user/unban?key=${encodeURIComponent(adminKey)}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    if(!resp.ok){
+      const err = await resp.json();
+      throw new Error(err.error || '解封失败');
+    }
+    await loadUsers(currentUsersPage);
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+// 搜索框回车触发搜索
+document.getElementById('userSearchInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter') loadUsers(1);
+});
 </script>
 </body>
 </html>

@@ -585,6 +585,11 @@ function ensureDb() {
   try {
     db.exec("ALTER TABLE users ADD COLUMN pledged INTEGER DEFAULT 0");
   } catch (e) { /* 字段已存在则忽略 */ }
+  // 兼容已存在的表：补充 banned / banned_at 字段（封禁用户登录）
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0");
+    db.exec("ALTER TABLE users ADD COLUMN banned_at INTEGER");
+  } catch (e) { /* 字段已存在则忽略 */ }
   // 兼容已存在的表：补充 verify_codes.ip 字段（用于每 IP 每日验证次数限制）
   try {
     db.exec("ALTER TABLE verify_codes ADD COLUMN ip TEXT DEFAULT ''");
@@ -1378,8 +1383,9 @@ function getCookie(req, name) {
 function requireAuth(req) {
   const payload = verifyToken(getCookie(req, "treehole_token"));
   if (!payload) return null;
-  const user = queryOne("SELECT pledged FROM users WHERE email = ?", [payload.email]);
+  const user = queryOne("SELECT pledged, banned FROM users WHERE email = ?", [payload.email]);
   if (!user || !user.pledged) return null;
+  if (user.banned) return null;
   return payload.email;
 }
 
@@ -1716,7 +1722,10 @@ function handleAuthCheck(req) {
   if (!payload) {
     return { authorized: false };
   }
-  const user = queryOne("SELECT pledged FROM users WHERE email = ?", [payload.email]);
+  const user = queryOne("SELECT pledged, banned FROM users WHERE email = ?", [payload.email]);
+  if (user && user.banned) {
+    return { authorized: false, banned: true };
+  }
   return { authorized: true, email: payload.email, pledged: user ? !!user.pledged : false };
 }
 
@@ -2526,6 +2535,157 @@ function handleAdminStats() {
   };
 }
 
+// ==================== 用户管理（admin） ====================
+
+/** 用户列表（带搜索，分页） */
+function handleAdminUsers(query) {
+  const search = (query.search || "").trim();
+  const page = Math.max(parseInt(query.page, 10) || 1, 1);
+  const pageSize = Math.min(parseInt(query.pageSize, 10) || 50, 200);
+  const offset = (page - 1) * pageSize;
+  let where = "";
+  const params = [];
+  if (search) {
+    where = "WHERE email LIKE ?";
+    params.push(`%${search}%`);
+  }
+  const total = queryOne(`SELECT COUNT(*) as c FROM users ${where}`, params).c;
+  const users = queryAll(
+    `SELECT email, verified_at, last_visit, visit_count, total_duration, pledged, banned, banned_at
+     FROM users ${where}
+     ORDER BY verified_at DESC LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  // 批量查每用户的收藏数 + 订阅数
+  const emails = users.map(u => u.email);
+  let favMap = {}, subMap = {};
+  if (emails.length) {
+    const placeholders = emails.map(() => "?").join(",");
+    queryAll(`SELECT user_email, COUNT(*) as c FROM favorites WHERE user_email IN (${placeholders}) GROUP BY user_email`, emails)
+      .forEach(r => { favMap[r.user_email] = r.c; });
+    queryAll(`SELECT user_email, COUNT(*) as c FROM subscriptions WHERE user_email IN (${placeholders}) GROUP BY user_email`, emails)
+      .forEach(r => { subMap[r.user_email] = r.c; });
+  }
+  return {
+    total,
+    page,
+    pageSize,
+    users: users.map(u => ({
+      email: u.email,
+      verifiedAt: u.verified_at,
+      lastVisit: u.last_visit,
+      visitCount: u.visit_count || 0,
+      totalDuration: u.total_duration || 0,
+      pledged: !!u.pledged,
+      banned: !!u.banned,
+      bannedAt: u.banned_at,
+      favCount: favMap[u.email] || 0,
+      subCount: subMap[u.email] || 0,
+    })),
+  };
+}
+
+/** 单用户活动详情 */
+function handleAdminUserDetail(query) {
+  const email = (query.email || "").trim();
+  if (!email) throw new Error("缺少 email 参数");
+  const user = queryOne(
+    "SELECT email, verified_at, last_visit, visit_count, total_duration, pledged, banned, banned_at FROM users WHERE email = ?",
+    [email]
+  );
+  if (!user) throw new Error("用户不存在");
+
+  // 收藏列表（最近 100 条）
+  const favorites = queryAll(
+    `SELECT f.pid, h.text, h.category, h.likenum, h.reply
+     FROM favorites f LEFT JOIN holes h ON h.pid = f.pid
+     WHERE f.user_email = ? ORDER BY f.id DESC LIMIT 100`,
+    [email]
+  ).map(f => ({ pid: f.pid, text: f.text, category: f.category, likenum: f.likenum, reply: f.reply }));
+
+  // 订阅关键词
+  const subscriptions = queryAll(
+    "SELECT keyword, notify_email, created_at FROM subscriptions WHERE user_email = ? ORDER BY created_at DESC",
+    [email]
+  ).map(s => ({ keyword: s.keyword, notifyEmail: s.notify_email, createdAt: s.created_at }));
+
+  // 浏览历史（最近 100 条）
+  const views = queryAll(
+    `SELECT pv.pid, h.text, h.category, pv.viewed_at, pv.duration
+     FROM post_views pv LEFT JOIN holes h ON h.pid = pv.pid
+     WHERE pv.user_email = ? ORDER BY pv.viewed_at DESC LIMIT 100`,
+    [email]
+  ).map(v => ({ pid: v.pid, text: v.text, category: v.category, viewedAt: v.viewed_at, duration: v.duration }));
+
+  // 访问日志（最近 30 条）
+  const visits = queryAll(
+    "SELECT ip, entered_at, last_active FROM visit_logs WHERE user_email = ? ORDER BY entered_at DESC LIMIT 30",
+    [email]
+  ).map(v => ({ ip: v.ip, enteredAt: v.entered_at, lastActive: v.last_active }));
+
+  // AI 报告调用记录（通过 IP 关联，最近 50 条）
+  const userIps = visits.map(v => v.ip).filter(Boolean);
+  let reports = [];
+  if (userIps.length) {
+    const uniqueIps = [...new Set(userIps)].slice(0, 20);
+    const ipPlaceholders = uniqueIps.map(() => "?").join(",");
+    reports = queryAll(
+      `SELECT ip, provider, mode, success, err_msg, created_at FROM report_logs
+       WHERE ip IN (${ipPlaceholders}) ORDER BY created_at DESC LIMIT 50`,
+      uniqueIps
+    ).map(r => ({ ip: r.ip, provider: r.provider, mode: r.mode, success: !!r.success, errMsg: r.err_msg, createdAt: r.created_at }));
+  }
+
+  // Agent Token 列表
+  const tokens = queryAll(
+    "SELECT label, last_used_at, call_count, created_at, revoked_at FROM agent_tokens WHERE user_email = ? ORDER BY created_at DESC",
+    [email]
+  ).map(t => ({ label: t.label, lastUsedAt: t.last_used_at, callCount: t.call_count, createdAt: t.created_at, revokedAt: t.revoked_at }));
+
+  return {
+    user: {
+      email: user.email,
+      verifiedAt: user.verified_at,
+      lastVisit: user.last_visit,
+      visitCount: user.visit_count || 0,
+      totalDuration: user.total_duration || 0,
+      pledged: !!user.pledged,
+      banned: !!user.banned,
+      bannedAt: user.banned_at,
+    },
+    favorites,
+    subscriptions,
+    views,
+    visits,
+    reports,
+    tokens,
+  };
+}
+
+/** 封禁用户 */
+function handleAdminUserBan(body) {
+  const email = (body.email || "").trim();
+  if (!email) throw new Error("缺少 email 参数");
+  const user = queryOne("SELECT email FROM users WHERE email = ?", [email]);
+  if (!user) throw new Error("用户不存在");
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare("UPDATE users SET banned = 1, banned_at = ? WHERE email = ?").run(now, email);
+  // 同时撤销该用户所有 Agent Token
+  db.prepare("UPDATE agent_tokens SET revoked_at = ? WHERE user_email = ? AND revoked_at IS NULL").run(now, email);
+  console.log(`[admin] 封禁用户: ${email}`);
+  alertAdmin("warn", "suspicious", "用户被封禁", `邮箱: ${email}`, "");
+  return { success: true };
+}
+
+/** 解封用户 */
+function handleAdminUserUnban(body) {
+  const email = (body.email || "").trim();
+  if (!email) throw new Error("缺少 email 参数");
+  db.prepare("UPDATE users SET banned = 0, banned_at = NULL WHERE email = ?").run(email);
+  console.log(`[admin] 解封用户: ${email}`);
+  return { success: true };
+}
+
 // ==================== 主服务 ====================
 const server = http.createServer(async (req, res) => {
   // CORS 预检
@@ -2958,6 +3118,36 @@ const server = http.createServer(async (req, res) => {
       await ensureDb();
       try {
         sendJson(res, 200, handleAdminInviteDelete(body));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "admin/users") {
+      await ensureDb();
+      sendJson(res, 200, handleAdminUsers(query));
+      return;
+    }
+    if (route === "admin/user/detail") {
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleAdminUserDetail(query));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "admin/user/ban") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleAdminUserBan(body));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "admin/user/unban") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleAdminUserUnban(body));
       } catch (e) { sendError(res, 400, e.message); }
       return;
     }
