@@ -4,7 +4,7 @@
  *
  * 让 Claude Code / Cursor / Codex 等 AI 助手通过 MCP 协议查询树洞数据。
  * 从环境变量读取配置，不硬编码任何地址或密钥：
- *   AUTOTREEHOLE_URL   站点地址（如 http://118.178.145.162）
+ *   AUTOTREEHOLE_URL   站点地址（如 http://autotreehole.cn）
  *   AUTOTREEHOLE_TOKEN 用户的个人 API Token（ath_ 开头）
  *
  * 配置示例（粘贴到 Claude Code 的 MCP 设置）：

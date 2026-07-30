@@ -1416,7 +1416,7 @@ mark{
   background:#f0f0f2;color:var(--fg);
 }
 
-/* ==================== 站长信箱弹窗（未登录可用） ==================== */
+/* ==================== 作者信箱弹窗（未登录可用） ==================== */
 .msg-overlay{
   position:fixed;inset:0;z-index:10000;
   background:
@@ -1713,7 +1713,7 @@ mark{
       </svg>
     </div>
     <h2>欢迎来到 AutoTreehole</h2>
-    <p class="pledge-text">BIG BROTHER IS WATCHING.<br>为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。每一位用户的默契，是本站继续服务大家的基石。</p>
+    <p class="pledge-text">BIG BROTHER IS WATCHING.<br>为保本站长存，请勿在北大树洞、小红书、朋友圈等任何公共平台传播本站地址。本站仅为民间平台。</p>
     <div class="pledge-btns">
       <button class="pledge-btn pledge-btn-primary" id="pledgeBtn">Yes, I agree</button>
       <button class="pledge-btn pledge-btn-secondary" id="pledgeDeclineBtn">No, thanks</button>
@@ -1721,11 +1721,11 @@ mark{
   </div>
 </div>
 
-<!-- 站长信箱弹窗（未登录访客可用，如：获取邀请码） -->
+<!-- 作者信箱弹窗（未登录访客可用，如：获取邀请码） -->
 <div class="msg-overlay hidden" id="msgOverlay">
   <div class="msg-card">
     <button class="msg-close" id="msgClose" aria-label="关闭">×</button>
-    <h2>站长信箱</h2>
+    <h2>作者信箱</h2>
     <div class="msg-field">
       <label>联系方式（选填）</label>
       <input type="text" id="pubMsgContact" class="msg-input" placeholder="邮箱 / 微信 / 其他" maxlength="200">
@@ -2163,7 +2163,7 @@ mark{
       </div>
 
       <div class="about-section">
-        <h3 class="about-h" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">站长信箱<span style="font-size:13px;font-weight:400;color:var(--fg-secondary);letter-spacing:0">交流一下？</span></h3>
+        <h3 class="about-h" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">作者信箱<span style="font-size:13px;font-weight:400;color:var(--fg-secondary);letter-spacing:0">交流一下？</span></h3>
         <div class="about-field">
           <label>留言内容</label>
           <textarea id="msgContent" class="about-textarea" rows="5" placeholder="问题反馈、建议、合作交流…" maxlength="5000"></textarea>
@@ -2384,11 +2384,11 @@ async function inviteLogin(){
 document.getElementById('inviteBtn').addEventListener('click', inviteLogin);
 document.getElementById('inviteCode').addEventListener('keydown', e => { if(e.key==='Enter') inviteLogin(); });
 
-/* ==================== 站长信箱弹窗（未登录访客） ==================== */
+/* ==================== 作者信箱弹窗（未登录访客） ==================== */
 function openMsgOverlay(source){
   document.getElementById('msgOverlay').classList.remove('hidden');
   document.getElementById('pubMsgArea').innerHTML = '';
-  // 记录来源（如：获取邀请码），随留言一起发送，便于站长识别
+  // 记录来源（如：获取邀请码），随留言一起发送，便于作者识别
   document.getElementById('msgOverlay').dataset.source = source || '';
   // 根据来源切换占位符
   const taEl = document.getElementById('pubMsgContent');
@@ -2439,7 +2439,7 @@ document.querySelectorAll('.auth-tab').forEach(tab => {
   });
 });
 
-/* ==================== 站长信箱 ==================== */
+/* ==================== 作者信箱 ==================== */
 async function submitMessage(){
   const content = document.getElementById('msgContent').value.trim();
   const contact = document.getElementById('msgContact').value.trim();
@@ -2610,7 +2610,7 @@ const ONBOARDING_STEPS = [
   { selector: '.tab-btn[data-panel="mcp"]', title: 'MCP · AI 接入',
     text: '生成 Token，让 Claude Code 等 AI 助手直接帮你查询树洞——你的智能体从此拥有对树洞的全局记忆。' },
   { selector: null, title: '准备就绪',
-    text: '就这些，开始探索吧！遇到问题可在「关于」页联系站长。' },
+    text: '就这些，开始探索吧！遇到问题可在「关于」页联系作者。' },
 ];
 
 function maybeStartOnboarding(){
@@ -3629,7 +3629,7 @@ async function genReport(){
       if(modelEl && modelEl.value.trim()){
         body.customConfig = {model: modelEl.value.trim(), url: providerInfo.url, fmt: providerInfo.fmt, apiKey: '__public__'};
       }
-      flash('info', `开始生成报告 · 服务：${currentProvider}（站长提供） · 模式：${currentMode==='week'?'全周分析':'关键词专题'}`);
+      flash('info', `开始生成报告 · 服务：${currentProvider}（作者提供） · 模式：${currentMode==='week'?'全周分析':'关键词专题'}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000);
       const data = await api('/report', {method:'POST', body, signal: controller.signal});

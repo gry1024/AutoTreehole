@@ -45,3 +45,6 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# Playwright MCP 本地快照（含页面内容，不上传）
+.playwright-mcp/

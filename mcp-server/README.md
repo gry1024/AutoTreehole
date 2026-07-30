@@ -52,7 +52,7 @@ AI：（自动调用 get_latest_posts，返回最新帖子）
 
 | 变量 | 说明 |
 |------|------|
-| `AUTOTREEHOLE_URL` | AutoTreehole 站点地址（如 `http://118.178.145.162`） |
+| `AUTOTREEHOLE_URL` | AutoTreehole 站点地址（如 `http://autotreehole.cn`） |
 | `AUTOTREEHOLE_TOKEN` | 你的个人 API Token（`ath_` 开头） |
 
 ## 限制

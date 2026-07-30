@@ -1730,7 +1730,7 @@ function handleAuthPledge(req) {
   return { success: true };
 }
 
-// 站长信箱：转发用户留言到站长邮箱
+// 作者信箱：转发用户留言到站长邮箱
 async function handleMessage(body, req) {
   const token = getCookie(req, "treehole_token");
   const payload = verifyToken(token);
@@ -1750,9 +1750,9 @@ async function handleMessage(body, req) {
   const mailOptions = {
     from: MAIL_FROM,
     to: SITE_OWNER_EMAIL,
-    subject: `AutoTreehole 站长信箱 · 来自 ${userEmail} 的留言`,
+    subject: `AutoTreehole 作者信箱 · 来自 ${userEmail} 的留言`,
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
-      <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">📬 站长信箱新留言</h2>
+      <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">📬 作者信箱新留言</h2>
       <table style="width:100%;font-size:14px;color:#1D1D1F;line-height:1.8;margin-bottom:20px;">
         <tr><td style="color:#86868B;width:80px;vertical-align:top;">注册邮箱</td><td>${esc(userEmail)}</td></tr>
         ${contact ? `<tr><td style="color:#86868B;vertical-align:top;">联系方式</td><td>${esc(contact)}</td></tr>` : ""}
@@ -1764,11 +1764,11 @@ async function handleMessage(body, req) {
     </div>`,
   };
   await getMailer().sendMail(mailOptions);
-  console.log(`[message] 站长信箱留言 from ${userEmail}`);
+  console.log(`[message] 作者信箱留言 from ${userEmail}`);
   return { success: true, message: "留言已发送，感谢你的反馈" };
 }
 
-// 站长信箱（未登录访客版）：用于"获取邀请码"等场景，联系方式必填，严格频率限制
+// 作者信箱（未登录访客版）：用于"获取邀请码"等场景，联系方式必填，严格频率限制
 async function handlePublicMessage(body, req) {
   const ip = getClientIp(req);
   // 先做输入校验（廉价、无副作用），再查频率限制，避免无效请求消耗配额
@@ -1776,7 +1776,7 @@ async function handlePublicMessage(body, req) {
   if (!content) throw new Error("留言内容不能为空");
   if (content.length > 5000) throw new Error("留言内容过长（限 5000 字）");
   const contact = (body.contact || "").trim();
-  if (!contact) throw new Error("请留下你的联系方式，以便站长回复");
+  if (!contact) throw new Error("请留下你的联系方式，以便作者回复");
   if (contact.length > 200) throw new Error("联系方式过长（限 200 字）");
   // 来源标记（如：获取邀请码），去除控制字符防邮件头注入
   const source = (body.source || "").trim().slice(0, 40).replace(/[\r\n\0]/g, "");
@@ -1789,9 +1789,9 @@ async function handlePublicMessage(body, req) {
   const mailOptions = {
     from: MAIL_FROM,
     to: SITE_OWNER_EMAIL,
-    subject: `AutoTreehole 站长信箱 · 访客留言${source ? "（" + source + "）" : ""}`,
+    subject: `AutoTreehole 作者信箱 · 访客留言${source ? "（" + source + "）" : ""}`,
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:500px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
-      <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">📬 站长信箱新留言（访客）</h2>
+      <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">📬 作者信箱新留言（访客）</h2>
       <table style="width:100%;font-size:14px;color:#1D1D1F;line-height:1.8;margin-bottom:20px;">
         <tr><td style="color:#86868B;width:80px;vertical-align:top;">来源</td><td>未登录访客${source ? " · " + esc(source) : ""}</td></tr>
         <tr><td style="color:#86868B;vertical-align:top;">联系方式</td><td>${esc(contact)}</td></tr>
@@ -1804,7 +1804,7 @@ async function handlePublicMessage(body, req) {
   };
   await getMailer().sendMail(mailOptions);
   console.log(`[message] 访客留言 from IP=${ip} source=${source || "none"}`);
-  return { success: true, message: "留言已发送，站长会尽快与你联系" };
+  return { success: true, message: "留言已发送，作者会尽快与你联系" };
 }
 
 // ==================== 邀请码 ====================
