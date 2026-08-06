@@ -27,6 +27,8 @@ const PKU_API_BASE = "https://treehole.pku.edu.cn/api/";
 // 邮箱验证配置（全部从环境变量读取，详见 .env.example）
 const MAIL_USER = process.env.MAIL_USER || "";
 const MAIL_PASS = process.env.MAIL_PASS || "";
+const MAIL_HOST = process.env.MAIL_HOST || "smtpdm.aliyun.com";
+const MAIL_PORT = parseInt(process.env.MAIL_PORT || "465", 10);
 const MAIL_FROM = `"AutoTreehole" <${MAIL_USER}>`;
 const ALLOWED_EMAIL_DOMAINS = ["pku.edu.cn", "stu.pku.edu.cn"];
 const TOKEN_SECRET = process.env.TOKEN_SECRET || "";
@@ -48,15 +50,15 @@ const MESSAGE_IP_HOURLY_LIMIT = 3;   // 每 IP 每小时最多 3 条
 const MESSAGE_IP_DAILY_LIMIT = 8;    // 每 IP 每天最多 8 条
 const MESSAGE_GLOBAL_HOURLY_LIMIT = 50; // 全局每小时最多 50 条（避免大批正常用户同时留言被误限）
 
-// 频率限制：每 IP 每分钟最多 30 次普通请求、2 次报告请求
+// 频率限制：每 IP 每分钟最多 30 次普通请求、5 次报告请求
 const RATE_LIMIT_NORMAL = 30;
-const RATE_LIMIT_REPORT = 2;
+const RATE_LIMIT_REPORT = 5;
 const RATE_WINDOW_MS = 60_000;
-// 全局报告频率：所有用户合计每分钟最多 10 次、每天最多 200 次（防止分布式滥用 MiniMax Key）
-const GLOBAL_REPORT_LIMIT_PER_MIN = 10;
-const GLOBAL_REPORT_LIMIT_PER_DAY = 200;
-// 每 IP 每天最多 15 次报告
-const IP_DAILY_REPORT_LIMIT = 15;
+// 全局报告频率：所有用户合计每分钟最多 30 次、每天最多 500 次（防止分布式滥用 MiniMax Key）
+const GLOBAL_REPORT_LIMIT_PER_MIN = 30;
+const GLOBAL_REPORT_LIMIT_PER_DAY = 500;
+// 每 IP 每天最多 30 次报告
+const IP_DAILY_REPORT_LIMIT = 30;
 const DAY_MS = 86_400_000;
 
 // Agent 接入：个人 API Token 限流（独立桶，按 token）
@@ -77,23 +79,96 @@ const MAX_DAYS = 90;
 const MAX_POSTS_FOR_LLM = 200;
 const MIN_USEFUL_LEN = 4;
 
-// LLM 服务配置（MiniMax 为服务器提供的默认服务，其余需网友自行提供 Key）
+// LLM 服务配置（MiniMax / DeepSeek 为服务器提供的公共服务，其余需网友自行提供 Key）
 const LLM_PROVIDERS = {
-  deepseek:  { key: "DEEPSEEK_API_KEY",  url: "https://api.deepseek.com/chat/completions",                           model: "deepseek-v4-flash", fmt: "openai", public: false,
-    models: ["deepseek-v4-pro", "deepseek-v4-flash"] },
   minimax:   { key: "MINIMAX_API_KEY",   url: "https://api.minimax.chat/v1/text/chatcompletion_v2",                 model: "MiniMax-M3",       fmt: "openai", public: true,
     models: ["MiniMax-M3"] },
+  deepseek:  { key: "DEEPSEEK_API_KEY",  url: "https://api.deepseek.com/v1/chat/completions",                       model: "deepseek-chat",    fmt: "openai", public: true,
+    models: ["deepseek-chat", "deepseek-reasoner"] },
   openai:    { key: "OPENAI_API_KEY",    url: "https://api.openai.com/v1/chat/completions",                        model: "gpt-5.4-mini",     fmt: "openai", public: false,
     models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] },
   anthropic: { key: "ANTHROPIC_API_KEY", url: "https://api.anthropic.com/v1/messages",                             model: "claude-sonnet-5",  fmt: "anthropic", public: false,
     models: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"] },
   kimi:      { key: "MOONSHOT_API_KEY",  url: "https://api.moonshot.cn/v1/chat/completions",                       model: "kimi-k2.5",        fmt: "openai", public: false,
     models: ["kimi-k2.5", "kimi-k2-0905-preview", "kimi-k2-turbo-preview"] },
-  qwen:      { key: "DASHSCOPE_API_KEY", url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: "qwen-flash",        fmt: "openai", public: true,
-    models: ["qwen-flash", "qwen-turbo", "qwen-plus", "qwen-max"] },
   glm:       { key: "GLM_API_KEY",       url: "https://open.bigmodel.cn/api/paas/v4/chat/completions",              model: "glm-4.6",          fmt: "openai", public: false,
     models: ["glm-4.6", "glm-4.5", "glm-4.5-flash"] },
 };
+
+// 运行时限额追踪：记录已达限额的 public provider 及其标记时间，1 小时后自动恢复为可用
+// 结构：Map<providerName, timestamp_ms>
+const quotaExhausted = new Map();
+const QUOTA_EXPIRE_MS = 60 * 60 * 1000; // 1 小时后自动重试该 provider
+// 每 10 分钟清理过期记录
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, t] of quotaExhausted) {
+    if (now - t > QUOTA_EXPIRE_MS) quotaExhausted.delete(k);
+  }
+}, 10 * 60 * 1000).unref?.();
+
+/**
+ * 主动探测单个 public provider 的真实可用性。
+ * 发送最小请求（max_tokens=1），根据 HTTP 状态码与响应体判断是否限额：
+ *   - 429 / 余额不足 / quota 相关 → 标记限额
+ *   - 其他响应（含 400）→ key 有效且未限额，清除限额标记
+ *   - 网络错误 → 保守不改变状态
+ * 探测在启动后 10s 执行一次，之后每 10 分钟探测一次，确保状态真实。
+ */
+async function probeProvider(name, p) {
+  const apiKey = process.env[p.key];
+  if (!apiKey) return;
+  const isAnthropic = p.fmt === "anthropic";
+  const headers = { "Content-Type": "application/json" };
+  let body;
+  if (isAnthropic) {
+    headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    body = JSON.stringify({ model: p.model, max_tokens: 1, messages: [{ role: "user", content: "hi" }] });
+  } else {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    body = JSON.stringify({ model: p.model, max_tokens: 1, stream: false, messages: [{ role: "user", content: "hi" }] });
+  }
+  try {
+    const resp = await fetch(p.url, { method: "POST", headers, body, signal: AbortSignal.timeout(30_000) });
+    const text = await resp.text();
+    // 限额判断：429 或错误体含 quota/limit/exceeded/余额不足 等
+    const isQuota = resp.status === 429 || /quota|rate.?limit|exceeded|too many|余额不足|频率|limit reached|insufficient_balance/i.test(text);
+    // MiniMax 限额时 HTTP 可能 200，但 base_resp.status_code 非 0
+    let isMiniMaxQuota = false;
+    try {
+      const j = JSON.parse(text);
+      if (j && j.base_resp && j.base_resp.status_code && j.base_resp.status_code !== 0) {
+        const msg = j.base_resp.status_msg || "";
+        isMiniMaxQuota = /quota|limit|exceeded|余额|频率|上限|用量|套餐|积分/i.test(msg);
+      }
+    } catch (_) {}
+    if (isQuota || isMiniMaxQuota) {
+      quotaExhausted.set(name, Date.now());
+      console.log(`[probe] ${name} 已达限额，标记为不可用`);
+    } else {
+      // 任何非限额响应（含 400 参数错误）都说明 key 有效、未限额
+      if (quotaExhausted.has(name)) {
+        quotaExhausted.delete(name);
+        console.log(`[probe] ${name} 已恢复可用，清除限额标记`);
+      }
+    }
+  } catch (e) {
+    // 网络超时/连接失败：保守不改变状态，避免误判
+    console.log(`[probe] ${name} 探测失败（网络）: ${e.message}`);
+  }
+}
+
+// 探测所有 public provider
+async function probeAllProviders() {
+  for (const [name, p] of Object.entries(LLM_PROVIDERS)) {
+    if (p.public) await probeProvider(name, p);
+  }
+}
+
+// 启动后 10s 探测一次（等待服务完全启动），之后每 10 分钟探测一次，确保状态真实
+setTimeout(probeAllProviders, 10_000);
+setInterval(probeAllProviders, 10 * 60 * 1000).unref?.();
 
 // ==================== 频率限制 ====================
 const rateBuckets = new Map();
@@ -589,6 +664,18 @@ function ensureDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
     CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_email);
+
+    -- 作者信箱留言记录（登录用户 + 访客均入库）
+    CREATE TABLE IF NOT EXISTS messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_email TEXT DEFAULT '',            -- 登录用户的邮箱；访客留言为空
+      source     TEXT DEFAULT '',            -- 访客留言来源（如"获取邀请码""遇到问题"）；登录用户为空
+      contact    TEXT DEFAULT '',            -- 联系方式（访客必填，登录用户选填）
+      content    TEXT NOT NULL,              -- 留言正文
+      ip         TEXT DEFAULT '',            -- 发送者 IP
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
   `);
   // 兼容已存在的表：补充 pledged 字段
   try {
@@ -845,7 +932,9 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
   if (!resp.ok) {
     const text = await resp.text();
     // 识别限额/速率限制：HTTP 429 或错误体含 quota/rate_limit/exceeded 等
-    if (resp.status === 429 || /quota|rate.?limit|exceeded|too many|余额不足|频率|limit reached/i.test(text)) {
+    if (resp.status === 429 || /quota|rate.?limit|exceeded|too many|余额不足|频率|limit reached|insufficient_balance/i.test(text)) {
+      // 记录该 public provider 已达限额，供 handleProviders 返回不可用
+      if (!customConfig && LLM_PROVIDERS[provider] && LLM_PROVIDERS[provider].public) quotaExhausted.set(provider, Date.now());
       const e = new Error(`模型繁忙或已达限额（${resp.status}），请稍后再试或更换模型`);
       e.code = "QUOTA";
       throw e;
@@ -853,10 +942,15 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
     throw new Error(`LLM HTTP ${resp.status}: ${text.slice(0, 300)}`);
   }
   const data = await resp.json();
+  // 限额标记：public provider 代理模式下，记录已达限额（供 handleProviders 返回不可用）
+  const markQuotaIfPublic = () => {
+    if (!customConfig && LLM_PROVIDERS[provider] && LLM_PROVIDERS[provider].public) quotaExhausted.set(provider, Date.now());
+  };
   // minimax 限额时 HTTP 可能 200，但 base_resp.status_code 非 0
   if (data && data.base_resp && data.base_resp.status_code && data.base_resp.status_code !== 0) {
     const msg = data.base_resp.status_msg || "";
-    if (/quota|limit|exceeded|余额|频率/i.test(msg)) {
+    if (/quota|limit|exceeded|余额|频率|上限|用量|套餐|积分/i.test(msg)) {
+      markQuotaIfPublic();
       const e = new Error(`模型繁忙或已达限额，请稍后再试或更换模型`);
       e.code = "QUOTA";
       throw e;
@@ -864,6 +958,7 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
   }
   if (isAnthropic) {
     if (!data || !data.content || !data.content[0] || !data.content[0].text) {
+      markQuotaIfPublic();
       const e = new Error("模型返回内容为空或响应结构异常");
       e.code = "QUOTA";
       throw e;
@@ -872,6 +967,7 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
   }
   if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
     // 响应结构异常（choices 为空/缺失），当作限额触发 fallback
+    markQuotaIfPublic();
     const e = new Error("模型返回内容为空或响应结构异常");
     e.code = "QUOTA";
     throw e;
@@ -880,7 +976,7 @@ async function callLlm(system, user, provider, customConfig, ip = "") {
 }
 
 /**
- * 带 fallback 的 LLM 调用：public 模式下 minimax 达限额时自动改用 qwen 重试。
+ * 带 fallback 的 LLM 调用：public 模式下 minimax 达限额时自动改用 deepseek 重试。
  * 仅在服务器 Key 代理（非自定义 customConfig）且 provider 为 minimax 时触发 fallback。
  * customConfig 模式（用户自带 Key）不 fallback，直接抛出由前端提示。
  */
@@ -888,14 +984,14 @@ async function callLlmWithFallback(system, user, provider, customConfig, ip = ""
   try {
     return await callLlm(system, user, provider, customConfig, ip);
   } catch (e) {
-    // 服务器 Key 代理模式下的 minimax：限额或响应异常时 fallback 到 qwen
+    // 服务器 Key 代理模式下的 minimax：限额或响应异常时 fallback 到 deepseek
     const canFallback = !customConfig
       && provider === "minimax"
-      && LLM_PROVIDERS.qwen
-      && process.env[LLM_PROVIDERS.qwen.key];
+      && LLM_PROVIDERS.deepseek
+      && process.env[LLM_PROVIDERS.deepseek.key];
     if (!canFallback) throw e;
-    console.log(`[llm] minimax 调用失败（${e.code || "ERR"}: ${e.message.slice(0, 60)}），自动 fallback 到 qwen`);
-    return await callLlm(system, user, "qwen", null, ip);
+    console.log(`[llm] minimax 调用失败（${e.code || "ERR"}: ${e.message.slice(0, 60)}），自动 fallback 到 deepseek`);
+    return await callLlm(system, user, "deepseek", null, ip);
   }
 }
 
@@ -967,42 +1063,14 @@ function handleShow(query) {
 function handleTrend(query) {
   const days = validateInt(query.days, 1, 30, 7);
   const since = Math.floor(Date.now() / 1000) - days * 86400;
-  // 按天 + 分类聚合，使用本地时区
+  // 按天聚合每日帖子数，使用本地时区
   const rows = queryAll(
-    `SELECT date(timestamp, 'unixepoch', 'localtime') as day,
-            COALESCE(category, '其他') as category,
-            COUNT(*) as count
+    `SELECT date(timestamp, 'unixepoch', 'localtime') as day, COUNT(*) as count
      FROM holes WHERE timestamp >= ?
-     GROUP BY day, category
-     ORDER BY day ASC`,
+     GROUP BY day ORDER BY day ASC`,
     [since]
   );
-  // 整理为 { days: [...], categories: { 学习: [...], 情感: [...], ... } }
-  const daySet = [];
-  const catMap = {};
-  for (const r of rows) {
-    if (!daySet.includes(r.day)) daySet.push(r.day);
-    if (!catMap[r.category]) catMap[r.category] = {};
-    catMap[r.category][r.day] = r.count;
-  }
-  // 补全缺失天数为 0
-  const categories = Object.keys(catMap);
-  const series = {};
-  for (const cat of categories) {
-    series[cat] = daySet.map(d => catMap[cat][d] || 0);
-  }
-  // 计算每天总量，用于百分比
-  const totals = daySet.map(d => {
-    let sum = 0;
-    for (const cat of categories) sum += (catMap[cat][d] || 0);
-    return sum;
-  });
-  // 转为百分比
-  const percentSeries = {};
-  for (const cat of categories) {
-    percentSeries[cat] = series[cat].map((v, i) => totals[i] > 0 ? Math.round(v / totals[i] * 1000) / 10 : 0);
-  }
-  return { days: daySet, categories, series: percentSeries };
+  return { days: rows.map(r => r.day), counts: rows.map(r => r.count) };
 }
 
 async function handleReport(body, ip) {
@@ -1261,15 +1329,23 @@ async function sendWeeklyReportToSubscribers(report) {
 
 /** 返回所有支持的 LLM provider 及其预设模型列表（public=true 表示服务器已配置 Key，可直接使用） */
 function handleProviders() {
-  const all = Object.entries(LLM_PROVIDERS).map(([name, p]) => ({
-    name,
-    label: name.charAt(0).toUpperCase() + name.slice(1),
-    model: p.model,
-    models: p.models || [p.model],
-    fmt: p.fmt || "openai",
-    url: p.url,
-    public: !!p.public,
-  }));
+  const now = Date.now();
+  const all = Object.entries(LLM_PROVIDERS).map(([name, p]) => {
+    // public provider 运行时是否仍可用（Key 存在且未达限额，限额标记 1 小时后自动过期）
+    const exhaustedAt = quotaExhausted.get(name);
+    const isExhausted = exhaustedAt && (now - exhaustedAt < QUOTA_EXPIRE_MS);
+    if (exhaustedAt && !isExhausted) quotaExhausted.delete(name); // 过期则清除
+    return {
+      name,
+      label: name.charAt(0).toUpperCase() + name.slice(1),
+      model: p.model,
+      models: p.models || [p.model],
+      fmt: p.fmt || "openai",
+      url: p.url,
+      public: !!p.public,
+      available: !!p.public && !!process.env[p.key] && !isExhausted,
+    };
+  });
   return { providers: all };
 }
 
@@ -1325,9 +1401,9 @@ let mailTransporter = null;
 function getMailer() {
   if (mailTransporter) return mailTransporter;
   mailTransporter = nodemailer.createTransport({
-    host: "smtp.qq.com",
-    port: 465,
-    secure: true,
+    host: MAIL_HOST,
+    port: MAIL_PORT,
+    secure: MAIL_PORT === 465,
     auth: { user: MAIL_USER, pass: MAIL_PASS },
   });
   return mailTransporter;
@@ -1564,7 +1640,6 @@ function slimPost(p) {
   return {
     pid: p.pid,
     timestamp: p.timestamp,
-    category: p.category || p.type || "其他",
     preview: text.slice(0, 140),
     likenum: p.likenum,
     reply: p.reply,
@@ -1583,7 +1658,7 @@ function agentLatest(limit) {
 function agentHot(days, limit) {
   const since = Math.floor(Date.now() / 1000) - days * 86400;
   return queryAll(
-    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    "SELECT pid, text, timestamp, likenum, reply, type FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
     [since, limit]
   ).map(slimPost);
 }
@@ -1592,7 +1667,7 @@ function agentHot(days, limit) {
 function agentSearch(keyword, limit) {
   const like = `%${keyword}%`;
   return queryAll(
-    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE text LIKE ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    "SELECT pid, text, timestamp, likenum, reply, type FROM holes WHERE text LIKE ? ORDER BY likenum DESC, pid DESC LIMIT ?",
     [like, limit]
   ).map(slimPost);
 }
@@ -1600,7 +1675,7 @@ function agentSearch(keyword, limit) {
 /** Agent 查询函数：帖子详情（含评论全文） */
 function agentPost(pid) {
   const post = queryOne(
-    "SELECT pid, text, type, timestamp, reply, likenum, tag, COALESCE(category,'其他') as category FROM holes WHERE pid = ?",
+    "SELECT pid, text, type, timestamp, reply, likenum, tag FROM holes WHERE pid = ?",
     [pid]
   );
   if (!post) return null;
@@ -1618,7 +1693,6 @@ function agentPost(pid) {
     post: {
       pid: post.pid,
       timestamp: post.timestamp,
-      category: post.category,
       text: (post.text || "").replace(/[\x00-\x1f\x7f]/g, ""),
       likenum: post.likenum,
       reply: post.reply,
@@ -1660,11 +1734,11 @@ function agentWeeklyOne(weekStart) {
 function agentDigest(sinceTs) {
   const since = sinceTs || (Math.floor(Date.now() / 1000) - AGENT_DIGEST_DEFAULT_DAYS * 86400);
   const newPosts = queryAll(
-    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE timestamp >= ? ORDER BY pid DESC LIMIT ?",
+    "SELECT pid, text, timestamp, likenum, reply, type FROM holes WHERE timestamp >= ? ORDER BY pid DESC LIMIT ?",
     [since, AGENT_LIST_LIMIT]
   ).map(slimPost);
   const hotPosts = queryAll(
-    "SELECT pid, text, timestamp, likenum, reply, type, COALESCE(category,'其他') as category FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    "SELECT pid, text, timestamp, likenum, reply, type FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
     [since, AGENT_LIST_LIMIT]
   ).map(slimPost);
   const weekly = queryAll(
@@ -1930,6 +2004,10 @@ async function handleMessage(body, req) {
     </div>`,
   };
   await getMailer().sendMail(mailOptions);
+  // 入库记录留言（含发送者邮箱，供数据后台查看）
+  db.prepare(
+    "INSERT INTO messages (user_email, source, contact, content, ip, created_at) VALUES (?, '', ?, ?, ?, ?)"
+  ).run(userEmail, contact, content, ip, Math.floor(Date.now() / 1000));
   console.log(`[message] 作者信箱留言 from ${userEmail}`);
   return { success: true, message: "留言已发送，感谢你的反馈" };
 }
@@ -1969,6 +2047,10 @@ async function handlePublicMessage(body, req) {
     </div>`,
   };
   await getMailer().sendMail(mailOptions);
+  // 入库记录留言（访客无邮箱，记录来源和联系方式）
+  db.prepare(
+    "INSERT INTO messages (user_email, source, contact, content, ip, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run("", source, contact, content, ip, Math.floor(Date.now() / 1000));
   console.log(`[message] 访客留言 from IP=${ip} source=${source || "none"}`);
   return { success: true, message: "留言已发送，作者会尽快与你联系" };
 }
@@ -2156,11 +2238,43 @@ function handleFavoriteStatus(pids, req) {
 
 // ==================== 关键词订阅 ====================
 const MAX_SUBS_PER_USER = 5;       // 每人最多 5 个关键词
-const SUB_KEYWORD_MIN = 1;
+const SUB_KEYWORD_MIN = 2;         // 最短 2 字（防订阅单字高频词导致邮件轰炸）
 const SUB_KEYWORD_MAX = 30;
 const SUB_SCAN_INTERVAL_MS = 2 * 60_000; // 每 2 分钟扫描一次
 const SUB_DIGEST_MAX_POSTS = 20;   // 单封摘要最多列 20 条，超出提示
 const SUB_DAILY_CAP = 30;          // 每用户每日最多 30 封（防异常）
+// 关键词审查：禁止订阅的纯符号/无意义字符（仅含以下字符的关键词一律拒绝）
+const SUB_KEYWORD_BANNED_CHARS = /^[。，、；：！？\.\,\;\:\!\?\s\-—_~·…\""\'\(\)（）\[\]【】\{\}<>《》\/\\|`@#\$%\^&\*\+=]+$/;
+// 关键词在新帖中的命中率上限：若关键词在最近 500 帖中命中 ≥ 此值，视为超高频词，拒绝订阅
+const SUB_KEYWORD_MAX_HIT_RATE = 0.15; // 15% 命中率上限
+const SUB_KEYWORD_HIT_SAMPLE = 500;    // 取最近 500 帖作为样本
+
+// 关键词审查：返回 null 表示通过，返回字符串表示拒绝原因
+function validateSubscriptionKeyword(keyword) {
+  if (!keyword) return "关键词不能为空";
+  // 长度检查
+  if (keyword.length < SUB_KEYWORD_MIN) return `关键词长度至少 ${SUB_KEYWORD_MIN} 字`;
+  if (keyword.length > SUB_KEYWORD_MAX) return `关键词长度至多 ${SUB_KEYWORD_MAX} 字`;
+  // 纯符号/标点检查
+  if (SUB_KEYWORD_BANNED_CHARS.test(keyword)) return "关键词不能仅为标点符号或空白";
+  // 纯数字检查（如 "1"、"123"）—— 此类词命中率极高且无实际意义
+  if (/^\d+$/.test(keyword)) return "关键词不能为纯数字";
+  // 超高频词检查：统计最近 N 帖的命中率
+  try {
+    const sample = queryAll("SELECT text FROM holes ORDER BY pid DESC LIMIT ?", [SUB_KEYWORD_HIT_SAMPLE]);
+    if (sample.length > 0) {
+      const hits = sample.filter(r => (r.text || "").includes(keyword)).length;
+      const rate = hits / sample.length;
+      if (rate >= SUB_KEYWORD_MAX_HIT_RATE) {
+        return `关键词「${keyword}」在最近 ${sample.length} 帖中命中 ${hits} 次（${(rate*100).toFixed(1)}%），过于高频，无法订阅`;
+      }
+    }
+  } catch (e) {
+    // 审查失败时不阻塞订阅（降级），仅记录日志
+    console.error("[subscribe] 关键词频率审查失败:", e.message);
+  }
+  return null;
+}
 
 function isInviteUser(email) { return email && email.startsWith("invite:"); }
 
@@ -2227,9 +2341,9 @@ function handleSubscribeAdd(body, req) {
     throw new Error("订阅推送仅对校园邮箱登录用户开放");
   }
   const keyword = String(body.keyword || "").trim().replace(/[\x00-\x1f\x7f]/g, "");
-  if (keyword.length < SUB_KEYWORD_MIN || keyword.length > SUB_KEYWORD_MAX) {
-    throw new Error(`关键词长度需在 ${SUB_KEYWORD_MIN}-${SUB_KEYWORD_MAX} 字之间`);
-  }
+  // 关键词审查：长度 + 符号 + 数字 + 超高频词检测
+  const rejectReason = validateSubscriptionKeyword(keyword);
+  if (rejectReason) throw new Error(rejectReason);
   // 收信邮箱：强制使用用户注册邮箱（忽略前端传入的 notifyEmail，防止借订阅向他人邮箱轰炸）
   const notifyEmail = email;
   // 数量上限
@@ -2457,15 +2571,16 @@ function handleAdminStats() {
 
   // 热门帖子（浏览量 Top 20）
   const topPosts = queryAll(
-    `SELECT pv.pid, COUNT(*) as views, h.text, h.category
+    `SELECT pv.pid, COUNT(*) as views, h.text
      FROM post_views pv LEFT JOIN holes h ON h.pid = pv.pid
      GROUP BY pv.pid ORDER BY views DESC LIMIT 20`
   );
 
-  // 最近注册用户
+  // 最近注册用户（含浏览帖子数）
   const recentUsers = queryAll(
-    `SELECT email, verified_at, last_visit, visit_count, total_duration
-     FROM users ORDER BY verified_at DESC LIMIT 50`
+    `SELECT u.email, u.verified_at, u.last_visit, u.visit_count, u.total_duration,
+       (SELECT COUNT(*) FROM post_views WHERE user_email = u.email) as view_count
+     FROM users u ORDER BY u.verified_at DESC LIMIT 50`
   );
 
   // 浏览量趋势（近 30 天）
@@ -2474,13 +2589,6 @@ function handleAdminStats() {
      FROM post_views WHERE viewed_at >= ?
      GROUP BY day ORDER BY day ASC`,
     [Math.floor(Date.now() / 1000) - 30 * 86400]
-  );
-
-  // 分类浏览分布
-  const categoryViews = queryAll(
-    `SELECT COALESCE(h.category, '其他') as category, COUNT(*) as views
-     FROM post_views pv LEFT JOIN holes h ON h.pid = pv.pid
-     GROUP BY category ORDER BY views DESC`
   );
 
   // 邀请码统计
@@ -2523,7 +2631,7 @@ function handleAdminStats() {
   const favoriteUsers = queryOne("SELECT COUNT(DISTINCT user_email) as c FROM favorites").c;
   // 收藏数 Top 帖子
   const topFavoritedPosts = queryAll(
-    `SELECT f.pid, COUNT(*) as fav_count, h.text, h.category
+    `SELECT f.pid, COUNT(*) as fav_count, h.text
      FROM favorites f LEFT JOIN holes h ON h.pid = f.pid
      GROUP BY f.pid ORDER BY fav_count DESC LIMIT 20`
   );
@@ -2599,6 +2707,27 @@ function handleAdminStats() {
      FROM alert_logs ORDER BY created_at DESC LIMIT 100`
   );
 
+  // 用户画像：按年级（校园邮箱前两位数字）分组 + 邀请码用户占比
+  // 邮箱格式如 24xxx@stu.pku.edu.cn → 24 级；invite:XXXXXX → 邀请码用户
+  const portraitRows = queryAll(
+    `SELECT
+       CASE
+         WHEN email LIKE 'invite:%' THEN 'invite'
+         WHEN substr(email,1,2) GLOB '[0-9][0-9]' THEN substr(email,1,2)
+         ELSE 'other'
+       END as grade,
+       COUNT(*) as count
+     FROM users GROUP BY grade ORDER BY grade ASC`
+  );
+
+  // 作者信箱留言统计
+  const totalMessages = queryOne("SELECT COUNT(*) as c FROM messages").c;
+  const messagesToday = queryOne("SELECT COUNT(*) as c FROM messages WHERE created_at >= ?", [todayStart]).c;
+  const recentMessages = queryAll(
+    `SELECT id, user_email, source, contact, content, ip, created_at
+     FROM messages ORDER BY created_at DESC LIMIT 100`
+  );
+
   return {
     overview: { totalUsers, newToday, activeToday, totalViews, viewsToday },
     growth: growthSeries,
@@ -2606,7 +2735,6 @@ function handleAdminStats() {
     topPosts,
     recentUsers,
     viewsTrend,
-    categoryViews,
     invite: {
       total: totalInviteCodes,
       used: usedInviteCodes,
@@ -2652,7 +2780,6 @@ function handleAdminStats() {
         pid: p.pid,
         favCount: p.fav_count,
         text: p.text,
-        category: p.category,
       })),
       topUsers: topFavoritingUsers.map(u => ({
         email: u.user_email,
@@ -2689,6 +2816,20 @@ function handleAdminStats() {
         createdAt: a.created_at,
       })),
     },
+    userPortrait: portraitRows.map(p => ({ grade: p.grade, count: p.count })),
+    messages: {
+      total: totalMessages,
+      today: messagesToday,
+      recent: recentMessages.map(m => ({
+        id: m.id,
+        userEmail: m.user_email,
+        source: m.source,
+        contact: m.contact,
+        content: m.content,
+        ip: m.ip,
+        createdAt: m.created_at,
+      })),
+    },
   };
 }
 
@@ -2700,6 +2841,15 @@ function handleAdminUsers(query) {
   const page = Math.max(parseInt(query.page, 10) || 1, 1);
   const pageSize = Math.min(parseInt(query.pageSize, 10) || 50, 200);
   const offset = (page - 1) * pageSize;
+  // 排序白名单：默认按最后访问时间倒序（活跃度优先）
+  const SORT_MAP = {
+    last_visit: 'last_visit DESC',
+    view_count: '(SELECT COUNT(*) FROM post_views WHERE user_email = users.email) DESC',
+    visit_count: 'visit_count DESC',
+    verified_at: 'verified_at DESC',
+    total_duration: 'total_duration DESC',
+  };
+  const sortBy = SORT_MAP[query.sortBy] ? query.sortBy : 'last_visit';
   let where = "";
   const params = [];
   if (search) {
@@ -2710,28 +2860,32 @@ function handleAdminUsers(query) {
   const users = queryAll(
     `SELECT email, verified_at, last_visit, visit_count, total_duration, pledged, banned, banned_at
      FROM users ${where}
-     ORDER BY verified_at DESC LIMIT ? OFFSET ?`,
+     ORDER BY ${SORT_MAP[sortBy]} LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
-  // 批量查每用户的收藏数 + 订阅数
+  // 批量查每用户的收藏数 + 订阅数 + 浏览帖子数
   const emails = users.map(u => u.email);
-  let favMap = {}, subMap = {};
+  let favMap = {}, subMap = {}, viewMap = {};
   if (emails.length) {
     const placeholders = emails.map(() => "?").join(",");
     queryAll(`SELECT user_email, COUNT(*) as c FROM favorites WHERE user_email IN (${placeholders}) GROUP BY user_email`, emails)
       .forEach(r => { favMap[r.user_email] = r.c; });
     queryAll(`SELECT user_email, COUNT(*) as c FROM subscriptions WHERE user_email IN (${placeholders}) GROUP BY user_email`, emails)
       .forEach(r => { subMap[r.user_email] = r.c; });
+    queryAll(`SELECT user_email, COUNT(*) as c FROM post_views WHERE user_email IN (${placeholders}) GROUP BY user_email`, emails)
+      .forEach(r => { viewMap[r.user_email] = r.c; });
   }
   return {
     total,
     page,
     pageSize,
+    sortBy,
     users: users.map(u => ({
       email: u.email,
       verifiedAt: u.verified_at,
       lastVisit: u.last_visit,
       visitCount: u.visit_count || 0,
+      viewCount: viewMap[u.email] || 0,
       totalDuration: u.total_duration || 0,
       pledged: !!u.pledged,
       banned: !!u.banned,
@@ -2754,11 +2908,11 @@ function handleAdminUserDetail(query) {
 
   // 收藏列表（最近 100 条）
   const favorites = queryAll(
-    `SELECT f.pid, h.text, h.category, h.likenum, h.reply
+    `SELECT f.pid, h.text, h.likenum, h.reply
      FROM favorites f LEFT JOIN holes h ON h.pid = f.pid
      WHERE f.user_email = ? ORDER BY f.id DESC LIMIT 100`,
     [email]
-  ).map(f => ({ pid: f.pid, text: f.text, category: f.category, likenum: f.likenum, reply: f.reply }));
+  ).map(f => ({ pid: f.pid, text: f.text, likenum: f.likenum, reply: f.reply }));
 
   // 订阅关键词
   const subscriptions = queryAll(
@@ -2768,11 +2922,11 @@ function handleAdminUserDetail(query) {
 
   // 浏览历史（最近 100 条）
   const views = queryAll(
-    `SELECT pv.pid, h.text, h.category, pv.viewed_at, pv.duration
+    `SELECT pv.pid, h.text, pv.viewed_at, pv.duration
      FROM post_views pv LEFT JOIN holes h ON h.pid = pv.pid
      WHERE pv.user_email = ? ORDER BY pv.viewed_at DESC LIMIT 100`,
     [email]
-  ).map(v => ({ pid: v.pid, text: v.text, category: v.category, viewedAt: v.viewed_at, duration: v.duration }));
+  ).map(v => ({ pid: v.pid, text: v.text, viewedAt: v.viewed_at, duration: v.duration }));
 
   // 访问日志（最近 30 条）
   const visits = queryAll(
@@ -2899,7 +3053,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
       await ensureDb();
       if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
-      if (!rateLimit(ip, true)) { alertAdmin("warn", "rate_limit", "AI 报告接口触发频率限制", `路由: /api/report`, ip); sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 2 次、每天 15 次；全局每天 200 次"); return; }
+      if (!rateLimit(ip, true)) { alertAdmin("warn", "rate_limit", "AI 报告接口触发频率限制", `路由: /api/report`, ip); sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 5 次、每天 30 次；全局每天 500 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       try {
         sendJson(res, 200, await handleReport(body, ip));
@@ -3391,45 +3545,72 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// ==================== Token 过期告警（≤5天提醒站长） ====================
-const TOKEN_WARN_DAYS = 5;
-let tokenWarnSent = false; // 同一周期内只发一次
+// ==================== Token 过期告警（≤5天提醒，≤1天紧急通知） ====================
+const TOKEN_WARN_DAYS = 5;     // 常规告警阈值：剩余≤5天
+const TOKEN_CRITICAL_DAYS = 1; // 紧急告警阈值：剩余≤1天
+let tokenWarnSent = false;     // 常规告警去重（同一过期周期仅发一次）
+let tokenCriticalSent = false; // 紧急告警去重（同一过期周期仅发一次）
 
 async function checkTokenAndWarn() {
   if (!PKU_TOKEN || !SITE_OWNER_EMAIL) return;
   const days = tokenDaysLeft(PKU_TOKEN);
   if (days === null) return;
   if (days > TOKEN_WARN_DAYS) {
-    // 恢复后重置标记，便于下次到期再发
+    // Token 恢复健康（更新后剩余>5天），重置两个标记，便于下次到期再发
     tokenWarnSent = false;
+    tokenCriticalSent = false;
     return;
   }
-  if (tokenWarnSent) return; // 本周期已发过
-  tokenWarnSent = true;
-  try {
-    await getMailer().sendMail({
-      from: MAIL_FROM,
-      to: SITE_OWNER_EMAIL,
-      subject: `【紧急】AutoTreehole Token 将在 ${Math.ceil(days)} 天后过期`,
-      html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
-        <h2 style="color:#FF3B30;font-size:18px;font-weight:600;margin-bottom:20px;">⚠️ 树洞 Token 即将过期</h2>
-        <div style="background:#fff;border-radius:8px;padding:20px 24px;color:#1D1D1F;font-size:14px;line-height:1.8;">
-          <p>当前 Token 剩余有效时间约 <strong>${Math.ceil(days)} 天</strong>（约 ${Math.ceil(days*24)} 小时）。</p>
-          <p>过期后爬虫将无法抓取新帖、图片代理将失效。请尽快登录树洞刷新 Token，并更新服务器 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">.env</code> 中的 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">PKU_TOKEN</code> 与 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">PKU_UUID</code>，然后重启 PM2：<code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">pm2 restart treehole-api --update-env</code>。</p>
-          <p style="color:#86868B;font-size:12px;margin-top:16px;margin-bottom:0;">此邮件由 AutoTreehole 系统自动发送，每过期周期仅发送一次。</p>
-        </div>
-      </div>`,
-    });
-    console.log(`[token-warn] 已发送 Token 过期告警邮件（剩余 ${Math.ceil(days)} 天）`);
-  } catch (e) {
-    console.error(`[token-warn] 告警邮件发送失败: ${e.message}`);
-    tokenWarnSent = false; // 发送失败则允许下次重试
+
+  // —— 常规告警（≤5天） ——
+  if (!tokenWarnSent) {
+    tokenWarnSent = true;
+    try {
+      await getMailer().sendMail({
+        from: MAIL_FROM,
+        to: SITE_OWNER_EMAIL,
+        subject: `【提醒】AutoTreehole Token 将在 ${Math.ceil(days)} 天后过期`,
+        html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
+          <h2 style="color:#FF9500;font-size:18px;font-weight:600;margin-bottom:20px;">⚠️ 树洞 Token 即将过期</h2>
+          <div style="background:#fff;border-radius:8px;padding:20px 24px;color:#1D1D1F;font-size:14px;line-height:1.8;">
+            <p>当前 Token 剩余有效时间约 <strong>${Math.ceil(days)} 天</strong>（约 ${Math.ceil(days*24)} 小时）。</p>
+            <p>过期后爬虫将无法抓取新帖、图片代理将失效。请尽快登录树洞刷新 Token，并更新服务器 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">.env</code> 中的 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">PKU_TOKEN</code> 与 <code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">PKU_UUID</code>，然后重启 PM2：<code style="background:#f5f5f7;padding:2px 6px;border-radius:3px;">pm2 restart treehole-api --update-env</code>。</p>
+            <p style="color:#86868B;font-size:12px;margin-top:16px;margin-bottom:0;">此邮件由 AutoTreehole 系统自动发送，每过期周期仅发送一次。</p>
+          </div>
+        </div>`,
+      });
+      console.log(`[token-warn] 已发送 Token 常规告警邮件（剩余 ${Math.ceil(days)} 天）`);
+    } catch (e) {
+      console.error(`[token-warn] 常规告警邮件发送失败: ${e.message}`);
+      tokenWarnSent = false; // 发送失败则允许下次重试
+    }
+  }
+
+  // —— 紧急告警（≤1天） ——
+  // 独立于常规告警：剩余≤1天时触发更高级别告警，记录到安全告警面板并发邮件
+  if (days <= TOKEN_CRITICAL_DAYS && !tokenCriticalSent) {
+    tokenCriticalSent = true;
+    const hoursLeft = Math.max(0, Math.ceil(days * 24));
+    // alertAdmin 会同时：1) 入库 alert_logs（数据后台"安全告警"面板可见） 2) 发送告警邮件
+    // tokenCriticalSent 保证每过期周期只调用一次，不会被 alertAdmin 的 10 分钟节流拦截
+    alertAdmin("error", "token_critical",
+      `【紧急·最后${hoursLeft}小时】Token 即将失效，爬虫面临停摆`,
+      `当前 Token 剩余约 ${Math.round(days * 10) / 10} 天（${hoursLeft} 小时）。\n` +
+      `一旦过期：爬虫立即停止抓取、图片代理失效、周报/订阅连锁中断。\n\n` +
+      `立即操作：\n` +
+      `1. 登录 https://pkuhelper.pku.edu.cn\n` +
+      `2. F12 → Application → Cookies → 复制 pku_token\n` +
+      `3. F12 → Network → 任意请求 Headers → 复制 uuid\n` +
+      `4. SSH 到服务器，更新 /opt/treehole/.env 中的 PKU_TOKEN / PKU_UUID\n` +
+      `5. 执行 pm2 restart treehole-api --update-env`,
+      "127.0.0.1");
+    console.log(`[token-critical] 已触发 Token 紧急告警（剩余 ${hoursLeft} 小时）`);
   }
 }
 
-// 启动后 30 秒检查一次，之后每 6 小时检查一次
+// 启动后 30 秒检查一次，之后每 1 小时检查一次（紧急阶段需更及时发现）
 setTimeout(checkTokenAndWarn, 30_000);
-setInterval(checkTokenAndWarn, 6 * 3600_000);
+setInterval(checkTokenAndWarn, 3600_000);
 
 // ==================== 关键词订阅扫描定时器 ====================
 // 启动后 60 秒首次扫描（首次仅设水位线不补推），之后每 2 分钟扫描一次
