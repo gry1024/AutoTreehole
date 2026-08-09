@@ -76,13 +76,14 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
 .data-table tr:hover td{background:var(--bg)}
 .data-table .text-cell{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* 环形图 */
-.donut-wrap{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
-.donut-svg{flex:none}
-.donut-legend{flex:1;min-width:200px}
-.donut-legend .lg-item{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px}
-.donut-legend .lg-dot{width:10px;height:10px;border-radius:2px;flex:none}
-.donut-legend .lg-val{margin-left:auto;color:var(--fg-secondary);font-variant-numeric:tabular-nums}
+/* 折叠组件 */
+.collapse-toggle{text-align:center;padding:12px 0;cursor:pointer;color:var(--fg-secondary);
+  font-size:13px;font-family:var(--font-sans);font-weight:400;transition:color .2s,background .2s;
+  border-top:1px solid var(--divider-subtle);display:flex;align-items:center;justify-content:center;gap:6px}
+.collapse-toggle:hover{color:var(--fg);background:var(--bg)}
+.collapse-toggle svg{width:14px;height:14px;transition:transform .2s}
+.collapse-toggle.expanded svg{transform:rotate(180deg)}
+.collapsible-body{overflow:hidden;transition:max-height .3s ease}
 
 /* 邀请码管理 */
 .invite-create-wrap{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
@@ -127,19 +128,27 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
 
 /* 顶部导航栏 */
 .admin-nav{max-width:1100px;margin:0 auto;padding:0 24px;display:flex;gap:24px;
-  border-top:1px solid var(--divider-subtle)}
+  border-top:1px solid var(--divider-subtle);overflow-x:auto;-webkit-overflow-scrolling:touch}
 .admin-nav-btn{background:none;border:none;font-family:var(--font-sans);font-size:14px;
   color:var(--fg-tertiary);padding:12px 0;cursor:pointer;border-bottom:2px solid transparent;
-  margin-bottom:-1px;transition:color .15s;letter-spacing:0.01em}
+  margin-bottom:-1px;transition:color .15s;letter-spacing:0.01em;white-space:nowrap;flex:none}
 .admin-nav-btn:hover{color:var(--fg-secondary)}
 .admin-nav-btn.active{color:var(--fg);border-bottom-color:var(--fg);font-weight:500}
 
 /* 用户管理 */
-.user-search-wrap{display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.user-toolbar{display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.user-search-input{background:var(--bg-elevated);border:1px solid var(--divider);
+  border-radius:var(--radius-sm);padding:8px 12px;font-size:13px;outline:none;
+  font-family:var(--font-sans);color:var(--fg);min-width:200px;flex:1;max-width:320px}
+.user-search-input:focus{border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(0,113,227,0.12)}
 .user-search-btn{padding:8px 18px;border-radius:var(--radius-sm);background:var(--fg);
   color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;
   font-family:var(--font-sans);white-space:nowrap}
 .user-search-btn:hover{background:#000}
+.user-sort-select{background:var(--bg-elevated);border:1px solid var(--divider);
+  border-radius:var(--radius-sm);padding:8px 12px;font-size:13px;outline:none;
+  font-family:var(--font-sans);color:var(--fg);cursor:pointer}
+.user-sort-select:focus{border-color:var(--accent-blue)}
 .user-status{font-size:11px;padding:2px 8px;border-radius:3px;font-weight:500;
   font-family:var(--font-sans);white-space:nowrap}
 .user-status.normal{background:#E8F5EE;color:#34C759}
@@ -204,10 +213,10 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
 <!-- 登录页 -->
 <div class="login-wrap" id="loginWrap">
   <div class="login-card">
-    <h1>数据后台</h1>
-    <p>请输入管理密码</p>
-    <input type="password" class="login-input" id="loginPassword" placeholder="管理密码" autocomplete="current-password">
-    <button class="login-btn" id="loginBtn">进入后台</button>
+    <h1>AutoTreehole 数据后台</h1>
+    <p>请输入管理员密码</p>
+    <input type="password" id="loginPassword" class="login-input" placeholder="密码" autofocus>
+    <button id="loginBtn" class="login-btn">登录</button>
     <div class="login-error" id="loginError"></div>
   </div>
 </div>
@@ -221,15 +230,23 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
     </div>
     <nav class="admin-nav">
       <button class="admin-nav-btn active" data-tab="overview" onclick="switchTab('overview')">概览</button>
+      <button class="admin-nav-btn" data-tab="growth" onclick="switchTab('growth')">平台成长</button>
       <button class="admin-nav-btn" data-tab="users" onclick="switchTab('users')">用户管理</button>
+      <button class="admin-nav-btn" data-tab="content" onclick="switchTab('content')">内容分析</button>
+      <button class="admin-nav-btn" data-tab="ai" onclick="switchTab('ai')">AI 报告</button>
+      <button class="admin-nav-btn" data-tab="security" onclick="switchTab('security')">订阅与安全</button>
       <button class="admin-nav-btn" data-tab="invite" onclick="switchTab('invite')">邀请码</button>
     </nav>
   </div>
   <div class="container">
-    <div id="tab-overview">
-    <!-- 概览 -->
-    <div class="stats-grid" id="overviewGrid"></div>
 
+    <!-- ===== 概览 ===== -->
+    <div id="tab-overview">
+    <div class="stats-grid" id="overviewGrid"></div>
+    </div>
+
+    <!-- ===== 平台成长 ===== -->
+    <div id="tab-growth" style="display:none">
     <!-- 用户增长曲线 -->
     <div class="chart-section">
       <div class="chart-title">用户增长曲线</div>
@@ -251,23 +268,43 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       <div class="chart-wrap"><svg class="chart-svg" id="viewsChart"></svg></div>
     </div>
 
-    <!-- 分类浏览分布 -->
+    <!-- 收藏趋势 -->
     <div class="chart-section">
-      <div class="chart-title">分类浏览分布</div>
-      <div class="chart-sub">各分类帖子的浏览占比</div>
-      <div class="chart-wrap">
-        <div class="donut-wrap" id="categoryViewsWrap"></div>
-      </div>
+      <div class="chart-title">帖子收藏趋势</div>
+      <div class="chart-sub" id="favoritesStats">近 30 天每日收藏数</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="favoritesChart"></svg></div>
+    </div>
     </div>
 
-    <!-- 热门帖子 -->
+    <!-- ===== 用户管理 ===== -->
+    <div id="tab-users" style="display:none">
+    <!-- 用户画像：年级分布 + 邀请码用户占比 -->
+    <div class="chart-section">
+      <div class="chart-title">用户画像 · 年级分布</div>
+      <div class="chart-sub" id="portraitSub">按校园邮箱前两位数字识别年级（如 24 → 24 级），邀请码用户单独统计</div>
+      <div class="chart-wrap"><svg class="chart-svg" id="portraitChart"></svg></div>
+    </div>
+
+    <!-- 用户列表 -->
     <div class="table-section">
-      <div class="table-title">热门帖子（浏览量 Top 20）</div>
-      <div class="chart-sub">按浏览次数排序</div>
+      <div class="table-title">用户管理</div>
+      <div class="table-sub">按活跃度排序，可搜索邮箱</div>
+      <div class="user-toolbar">
+        <input type="text" id="userSearchInput" class="user-search-input" placeholder="搜索邮箱…">
+        <select class="user-sort-select" id="userSortSelect">
+          <option value="last_visit">按活跃度（最后访问）</option>
+          <option value="view_count">按浏览帖子数</option>
+          <option value="visit_count">按访问次数</option>
+          <option value="verified_at">按注册时间</option>
+          <option value="total_duration">按累计时长</option>
+        </select>
+        <button class="user-search-btn" onclick="loadUsers(1)">搜索</button>
+      </div>
       <table class="data-table">
-        <thead><tr><th>#</th><th>洞号</th><th>分类</th><th>浏览量</th><th>内容摘要</th></tr></thead>
-        <tbody id="topPostsBody"></tbody>
+        <thead><tr><th>邮箱</th><th>注册时间</th><th>最后访问</th><th>浏览帖子数</th><th>收藏</th><th>订阅</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="userListBody"></tbody>
       </table>
+      <div class="user-pagination" id="userPagination"></div>
     </div>
 
     <!-- 最近注册用户 -->
@@ -275,11 +312,47 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       <div class="table-title">最近注册用户</div>
       <div class="chart-sub">最新 50 位注册用户</div>
       <table class="data-table">
-        <thead><tr><th>邮箱</th><th>注册时间</th><th>最后访问</th><th>访问次数</th><th>累计时长</th></tr></thead>
+        <thead><tr><th>邮箱</th><th>注册时间</th><th>最后访问</th><th>浏览帖子数</th><th>累计时长</th></tr></thead>
         <tbody id="recentUsersBody"></tbody>
       </table>
     </div>
+    </div>
 
+    <!-- ===== 内容分析 ===== -->
+    <div id="tab-content" style="display:none">
+    <!-- 热门帖子 -->
+    <div class="table-section">
+      <div class="table-title">热门帖子（浏览量 Top 20）</div>
+      <div class="chart-sub">按浏览次数排序</div>
+      <table class="data-table">
+        <thead><tr><th>#</th><th>洞号</th><th>浏览量</th><th>内容摘要</th></tr></thead>
+        <tbody id="topPostsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 收藏数 Top 帖子 -->
+    <div class="table-section">
+      <div class="table-title">收藏数 Top 帖子</div>
+      <div class="chart-sub">被收藏次数最多的帖子（Top 20）</div>
+      <table class="data-table">
+        <thead><tr><th>帖子 PID</th><th>收藏数</th><th>正文摘要</th></tr></thead>
+        <tbody id="topFavoritedPostsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 收藏活跃用户 Top 10 -->
+    <div class="table-section">
+      <div class="table-title">收藏活跃用户 Top 10</div>
+      <div class="chart-sub">收藏数最多的用户</div>
+      <table class="data-table">
+        <thead><tr><th>用户邮箱</th><th>收藏数</th></tr></thead>
+        <tbody id="topFavoritingUsersBody"></tbody>
+      </table>
+    </div>
+    </div>
+
+    <!-- ===== AI 报告 ===== -->
+    <div id="tab-ai" style="display:none">
     <!-- AI 报告统计 -->
     <div class="chart-section">
       <div class="chart-title">AI 报告调用趋势</div>
@@ -313,32 +386,10 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
         <tbody id="recentReportsBody"></tbody>
       </table>
     </div>
-
-    <!-- 收藏统计 -->
-    <div class="chart-section">
-      <div class="chart-title">帖子收藏趋势</div>
-      <div class="chart-sub" id="favoritesStats">近 30 天每日收藏数</div>
-      <div class="chart-wrap"><svg class="chart-svg" id="favoritesChart"></svg></div>
     </div>
 
-    <div class="table-section">
-      <div class="table-title">收藏数 Top 帖子</div>
-      <div class="chart-sub">被收藏次数最多的帖子（Top 20）</div>
-      <table class="data-table">
-        <thead><tr><th>帖子 PID</th><th>收藏数</th><th>分类</th><th>正文摘要</th></tr></thead>
-        <tbody id="topFavoritedPostsBody"></tbody>
-      </table>
-    </div>
-
-    <div class="table-section">
-      <div class="table-title">收藏活跃用户 Top 10</div>
-      <div class="chart-sub">收藏数最多的用户</div>
-      <table class="data-table">
-        <thead><tr><th>用户邮箱</th><th>收藏数</th></tr></thead>
-        <tbody id="topFavoritingUsersBody"></tbody>
-      </table>
-    </div>
-
+    <!-- ===== 订阅与安全 ===== -->
+    <div id="tab-security" style="display:none">
     <!-- 订阅统计 -->
     <div class="table-section">
       <div class="table-title">关键词订阅统计</div>
@@ -388,7 +439,18 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       </table>
     </div>
 
+    <!-- 作者信箱留言 -->
+    <div class="table-section">
+      <div class="table-title">作者信箱留言</div>
+      <div class="chart-sub" id="messagesSub">最近 100 条留言</div>
+      <table class="data-table">
+        <thead><tr><th>时间</th><th>发送者</th><th>来源</th><th>联系方式</th><th>留言内容</th><th>IP</th></tr></thead>
+        <tbody id="messagesBody"></tbody>
+      </table>
     </div>
+    </div>
+
+    <!-- ===== 邀请码 ===== -->
     <div id="tab-invite" style="display:none">
     <!-- 邀请码管理 -->
     <div class="table-section">
@@ -414,29 +476,13 @@ body{font-family:var(--font-serif);background:var(--bg);color:var(--fg);
       <div id="inviteCreateResult" class="invite-result"></div>
 
       <!-- 邀请码列表 -->
-      <table class="data-table" style="margin-top:20px">
-        <thead><tr><th>邀请码</th><th>备注</th><th>创建时间</th><th>状态</th><th>使用者</th><th>使用时间</th><th></th></tr></thead>
+      <table class="data-table">
+        <thead><tr><th>邀请码</th><th>备注</th><th>创建时间</th><th>状态</th><th>使用者</th><th>使用时间</th><th>操作</th></tr></thead>
         <tbody id="inviteListBody"></tbody>
       </table>
     </div>
     </div>
 
-    <!-- 用户管理 -->
-    <div id="tab-users" style="display:none">
-      <div class="table-section">
-        <div class="table-title">用户管理</div>
-        <div class="chart-sub">所有注册用户，可搜索邮箱</div>
-        <div class="user-search-wrap">
-          <input type="text" id="userSearchInput" class="invite-input" placeholder="搜索邮箱…" style="flex:1;min-width:240px;max-width:400px">
-          <button class="user-search-btn" onclick="loadUsers(1)">搜索</button>
-        </div>
-        <table class="data-table">
-          <thead><tr><th>邮箱</th><th>注册时间</th><th>最后访问</th><th>访问次数</th><th>收藏</th><th>订阅</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody id="userListBody"></tbody>
-        </table>
-        <div class="user-pagination" id="userPagination"></div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -469,14 +515,15 @@ async function loadData(){
   renderGrowth(data.growth);
   renderDau(data.dau);
   renderViews(data.viewsTrend);
-  renderCategoryViews(data.categoryViews);
   renderTopPosts(data.topPosts);
   renderRecentUsers(data.recentUsers);
+  if(data.userPortrait) renderUserPortrait(data.userPortrait);
   renderInviteStats(data.invite);
   if(data.reports) renderReports(data.reports);
   if(data.favorites) renderFavoritesStats(data.favorites);
   if(data.subscriptions) renderSubsStats(data.subscriptions);
   if(data.alerts) renderAlertsStats(data.alerts);
+  if(data.messages) renderMessages(data.messages);
   await loadInviteList();
   return data;
 }
@@ -492,7 +539,7 @@ function renderOverview(o){
   document.getElementById('overviewGrid').innerHTML = items.map(i => `
     <div class="stat-card">
       <div class="stat-label">${i.label}</div>
-      <div class="stat-value">${i.value}</div>
+      <div class="stat-value">${fmtNum(i.value)}</div>
       <div class="stat-delta">${i.delta}</div>
     </div>`).join('');
 }
@@ -516,7 +563,7 @@ function drawLineChart(svgId, dataPoints, valueKey, color){
     const y = padT + (H - padT - padB) * (1 - i / yTicks);
     const val = Math.round(maxVal * i / yTicks);
     gridLines += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E8E8ED" stroke-width="1"/>`;
-    gridLines += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${val}</text>`;
+    gridLines += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${fmtNum(val)}</text>`;
   }
 
   // X 轴标签
@@ -564,51 +611,16 @@ function renderViews(data){
   drawLineChart('viewsChart', data, 'views', '#FF9500');
 }
 
-function renderCategoryViews(data){
-  const wrap = document.getElementById('categoryViewsWrap');
-  if(!data || data.length === 0){
-    wrap.innerHTML = '<span style="color:#86868B;font-size:13px">暂无数据</span>';
-    return;
-  }
-  const total = data.reduce((s, d) => s + d.views, 0);
-  const colors = {'学习':'#5B8DBF','情感':'#B87878','生活':'#6BA889','时事':'#8B7BB8','娱乐':'#B89A6B','求助':'#7BB0C4','其他':'#86868B'};
-  // 环形图
-  let cumulative = 0;
-  const r = 60, cx = 70, cy = 70, sw = 16;
-  const circumference = 2 * Math.PI * r;
-  let arcs = '';
-  data.forEach(d => {
-    const pct = d.views / total;
-    const dashLen = pct * circumference;
-    const offset = -cumulative * circumference;
-    const color = colors[d.category] || '#86868B';
-    arcs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-dasharray="${dashLen} ${circumference-dashLen}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
-    cumulative += pct;
-  });
-  const donut = `<svg class="donut-svg" width="140" height="140" viewBox="0 0 140 140">
-    ${arcs}
-    <text x="70" y="66" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">总浏览</text>
-    <text x="70" y="84" text-anchor="middle" fill="#1D1D1F" font-size="18" font-weight="600" font-family="sans-serif">${total}</text>
-  </svg>`;
-  const legend = `<div class="donut-legend">${data.map(d => {
-    const pct = (d.views / total * 100).toFixed(1);
-    const color = colors[d.category] || '#86868B';
-    return `<div class="lg-item"><span class="lg-dot" style="background:${color}"></span>${d.category}<span class="lg-val">${d.views} (${pct}%)</span></div>`;
-  }).join('')}</div>`;
-  wrap.innerHTML = donut + legend;
-}
-
 function renderTopPosts(posts){
   const body = document.getElementById('topPostsBody');
   if(!posts || posts.length === 0){
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+    body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
     return;
   }
   body.innerHTML = posts.map((p, i) => `
     <tr>
       <td>${i+1}</td>
       <td><a href="/?pid=${p.pid}" target="_blank">#${p.pid}</a></td>
-      <td>${p.category || '其他'}</td>
       <td>${p.views}</td>
       <td class="text-cell">${esc(p.text || '(无内容)')}</td>
     </tr>`).join('');
@@ -627,7 +639,7 @@ function renderRecentUsers(users){
       <td>${esc(u.email)}</td>
       <td>${fmtTime(u.verified_at)}</td>
       <td>${fmtTime(u.last_visit)}</td>
-      <td>${u.visit_count || 0}</td>
+      <td>${u.view_count || 0}</td>
       <td>${durStr}</td>
     </tr>`;
   }).join('');
@@ -639,7 +651,57 @@ function fmtTime(ts){
   const pad = n => String(n).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+// 数字格式化：K / M / B 国际单位
+function fmtNum(n){
+  if(n == null || isNaN(n)) return '—';
+  n = Number(n);
+  if(n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if(n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if(n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toLocaleString('en-US');
+}
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+/* ==================== 通用折叠组件 ==================== */
+const COLLAPSE_THRESHOLD = 10; // 超过此行数的表格默认折叠
+const ARROW_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>';
+
+// 为 table-section 添加折叠功能：行数超过阈值时默认折叠，显示"展开全部"按钮
+function makeTableCollapsible(bodyId, threshold){
+  const body = document.getElementById(bodyId);
+  if(!body) return;
+  const rows = body.querySelectorAll('tr');
+  // 跳过"暂无数据"占位行
+  if(rows.length <= 1 && body.innerHTML.includes('暂无数据')) return;
+  if(rows.length <= threshold) return;
+
+  // 折叠：隐藏 threshold 之后的行
+  rows.forEach((row, i) => {
+    if(i >= threshold) row.style.display = 'none';
+  });
+
+  // 检查是否已有折叠按钮
+  const table = body.closest('table');
+  const section = table.closest('.table-section');
+  let toggle = section.querySelector('.collapse-toggle');
+  if(!toggle){
+    toggle = document.createElement('div');
+    toggle.className = 'collapse-toggle';
+    table.parentNode.insertBefore(toggle, table.nextSibling);
+  }
+  toggle.innerHTML = `展开全部（共 ${rows.length} 条） ${ARROW_SVG}`;
+  toggle.classList.remove('expanded');
+
+  toggle.onclick = () => {
+    const isExpanded = toggle.classList.toggle('expanded');
+    rows.forEach((row, i) => {
+      if(i >= threshold) row.style.display = isExpanded ? '' : 'none';
+    });
+    toggle.innerHTML = isExpanded
+      ? `收起 ${ARROW_SVG}`
+      : `展开全部（共 ${rows.length} 条） ${ARROW_SVG}`;
+  };
+}
 
 /* ==================== AI 报告统计 ==================== */
 function renderReports(r){
@@ -649,9 +711,7 @@ function renderReports(r){
     const rate = r.total > 0 ? Math.round(r.success / r.total * 1000) / 10 : 0;
     statsEl.textContent = `总计 ${r.total} 次 · 成功 ${r.success} · 失败 ${r.fail} · 今日 ${r.today} 次 · 成功率 ${rate}%`;
   }
-  // 趋势图（堆叠柱状：成功 + 失败）
   drawStackedBarChart('reportsChart', r.trend || [], 'success', 'fail', 'day');
-  // 按服务商
   const pv = document.getElementById('reportsByProviderBody');
   if(r.byProvider && r.byProvider.length){
     pv.innerHTML = r.byProvider.map(p => {
@@ -661,7 +721,6 @@ function renderReports(r){
   }else{
     pv.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
-  // 按模式
   const mv = document.getElementById('reportsByModeBody');
   if(r.byMode && r.byMode.length){
     mv.innerHTML = r.byMode.map(m => {
@@ -672,7 +731,6 @@ function renderReports(r){
   }else{
     mv.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
-  // 最近记录
   const rv = document.getElementById('recentReportsBody');
   if(r.recent && r.recent.length){
     rv.innerHTML = r.recent.map(rr => {
@@ -687,6 +745,10 @@ function renderReports(r){
   }else{
     rv.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
+  // 折叠长表格
+  makeTableCollapsible('reportsByProviderBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('reportsByModeBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('recentReportsBody', COLLAPSE_THRESHOLD);
 }
 
 /* ==================== 收藏统计 ==================== */
@@ -696,20 +758,16 @@ function renderFavoritesStats(r){
   if(statsEl){
     statsEl.textContent = `总计 ${r.total} 次收藏 · ${r.users} 位用户参与`;
   }
-  // 趋势图（单线柱状）
   drawFavoritesBarChart('favoritesChart', r.trend || []);
-  // Top 帖子
   const tp = document.getElementById('topFavoritedPostsBody');
   if(r.topPosts && r.topPosts.length){
     tp.innerHTML = r.topPosts.map(p => {
       const summary = p.text ? esc(p.text.slice(0, 60)) : '<span style="color:#86868B">已删除</span>';
-      const cat = p.category ? esc(p.category) : '-';
-      return `<tr><td>${p.pid}</td><td style="color:#B87878;font-weight:600">${p.favCount}</td><td>${cat}</td><td class="text-cell" title="${esc(p.text||'')}">${summary}</td></tr>`;
+      return `<tr><td>${p.pid}</td><td style="color:#B87878;font-weight:600">${p.favCount}</td><td class="text-cell" title="${esc(p.text||'')}">${summary}</td></tr>`;
     }).join('');
   }else{
-    tp.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
+    tp.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
-  // Top 用户
   const tu = document.getElementById('topFavoritingUsersBody');
   if(r.topUsers && r.topUsers.length){
     tu.innerHTML = r.topUsers.map(u => {
@@ -719,6 +777,10 @@ function renderFavoritesStats(r){
   }else{
     tu.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
+  // 折叠长表格
+  makeTableCollapsible('topFavoritedPostsBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('topFavoritingUsersBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('topPostsBody', COLLAPSE_THRESHOLD);
 }
 
 /* ==================== 订阅统计 ==================== */
@@ -736,7 +798,6 @@ function renderSubsStats(r){
   }else{
     tk.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无订阅</td></tr>';
   }
-  // 用户订阅关键词明细
   const bu = document.getElementById('subByUserBody');
   const buStats = document.getElementById('subByUserStats');
   if(r.byUser && r.byUser.length){
@@ -756,6 +817,10 @@ function renderSubsStats(r){
     if(buStats) buStats.textContent = '每位用户订阅了哪些关键词';
     bu.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无订阅</td></tr>';
   }
+  // 折叠长表格
+  makeTableCollapsible('topKeywordsBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('subByUserBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('recentUsersBody', COLLAPSE_THRESHOLD);
 }
 
 /* ==================== 安全告警统计 ==================== */
@@ -778,9 +843,7 @@ function renderAlertsStats(r){
   if(statsEl){
     statsEl.textContent = `总计 ${r.total} 条告警 · 今日 ${r.today} 条 · 已邮件通知 ${r.notified} 条`;
   }
-  // 趋势图（单色柱状，橙红）
   drawAlertTrendChart('alertsChart', r.trend || []);
-  // 按类型
   const tb = document.getElementById('alertsByTypeBody');
   if(r.byType && r.byType.length){
     tb.innerHTML = r.byType.map(t => {
@@ -790,7 +853,6 @@ function renderAlertsStats(r){
   }else{
     tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#86868B;padding:24px">暂无告警 · 一切正常</td></tr>';
   }
-  // 按级别
   const lb = document.getElementById('alertsByLevelBody');
   if(r.byLevel && r.byLevel.length){
     lb.innerHTML = r.byLevel.map(l => {
@@ -801,7 +863,6 @@ function renderAlertsStats(r){
   }else{
     lb.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#86868B;padding:24px">暂无数据</td></tr>';
   }
-  // 最近记录
   const rb = document.getElementById('recentAlertsBody');
   if(r.recent && r.recent.length){
     rb.innerHTML = r.recent.map(a => {
@@ -818,7 +879,42 @@ function renderAlertsStats(r){
   }else{
     rb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#86868B;padding:24px">暂无告警记录 · 网站运行平稳</td></tr>';
   }
+  // 折叠长表格
+  makeTableCollapsible('alertsByTypeBody', COLLAPSE_THRESHOLD);
+  makeTableCollapsible('recentAlertsBody', COLLAPSE_THRESHOLD);
 }
+
+// 作者信箱留言渲染
+function renderMessages(msgs){
+  const body = document.getElementById('messagesBody');
+  const sub = document.getElementById('messagesSub');
+  if(!msgs){ return; }
+  sub.textContent = `共 ${msgs.total} 条留言 · 今日 ${msgs.today} 条 · 显示最近 ${msgs.recent.length} 条`;
+  if(!msgs.recent || msgs.recent.length === 0){
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--fg-tertiary);padding:24px">暂无留言</td></tr>';
+    return;
+  }
+  body.innerHTML = msgs.recent.map(m => {
+    const time = m.createdAt ? new Date(m.createdAt * 1000).toLocaleString('zh-CN') : '-';
+    const sender = m.userEmail ? esc(m.userEmail) : '<span style="color:var(--fg-tertiary)">访客</span>';
+    const source = m.source ? esc(m.source) : '—';
+    const contact = m.contact ? esc(m.contact) : '—';
+    // 留言内容截断显示，鼠标悬停看全文
+    const content = esc(m.content);
+    const shortContent = content.length > 80 ? content.slice(0, 80) + '…' : content;
+    const ip = m.ip ? esc(m.ip) : '—';
+    return `<tr>
+      <td style="white-space:nowrap">${time}</td>
+      <td>${sender}</td>
+      <td>${source}</td>
+      <td>${contact}</td>
+      <td class="text-cell" title="${content.replace(/"/g, '&quot;')}">${shortContent}</td>
+      <td>${ip}</td>
+    </tr>`;
+  }).join('');
+  makeTableCollapsible('messagesBody', COLLAPSE_THRESHOLD);
+}
+
 // 告警趋势柱状图（橙红色，单值）
 function drawAlertTrendChart(svgId, dataPoints){
   const svg = document.getElementById(svgId);
@@ -920,9 +1016,7 @@ function drawStackedBarChart(svgId, dataPoints, successKey, failKey, labelKey){
     const sH = s / maxVal * (H - padT - padB);
     const fH = f / maxVal * (H - padT - padB);
     const baseY = H - padB;
-    // 成功（底部，绿）
     bars += `<rect x="${cx - barW/2}" y="${baseY - sH}" width="${barW}" height="${sH}" fill="#34C759" rx="2"/>`;
-    // 失败（成功上方，红）
     if(f > 0){
       bars += `<rect x="${cx - barW/2}" y="${baseY - sH - fH}" width="${barW}" height="${fH}" fill="#FF3B30" rx="2"/>`;
     }
@@ -933,6 +1027,77 @@ function drawStackedBarChart(svgId, dataPoints, successKey, failKey, labelKey){
   svg.innerHTML = grid + bars + labels;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+}
+
+// 用户画像 · 年级分布柱状图（邀请码用户用不同颜色，柱顶显示占比）
+function renderUserPortrait(rows){
+  const svg = document.getElementById('portraitChart');
+  const sub = document.getElementById('portraitSub');
+  if(!rows || rows.length === 0){
+    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#86868B" font-size="13">暂无数据</text>';
+    return;
+  }
+  const total = rows.reduce((s, r) => s + (r.count || 0), 0);
+  if(total === 0){
+    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#86868B" font-size="13">暂无用户</text>';
+    return;
+  }
+  // 分离年级、邀请码、其他；年级按数字升序排列
+  const gradeRows = rows.filter(r => r.grade !== 'invite' && r.grade !== 'other')
+    .sort((a, b) => a.grade.localeCompare(b.grade));
+  const inviteRow = rows.find(r => r.grade === 'invite');
+  const otherRow = rows.find(r => r.grade === 'other');
+  const ordered = [
+    ...gradeRows,
+    ...(otherRow ? [otherRow] : []),
+    ...(inviteRow ? [inviteRow] : []),
+  ];
+  // 展示标签：年级加"级"，邀请码显示"邀请码"，其他显示"其他"
+  const labelOf = g => g === 'invite' ? '邀请码' : (g === 'other' ? '其他' : g + '级');
+  // 颜色：年级统一蓝色，邀请码橙色，其他灰色
+  const colorOf = g => g === 'invite' ? '#FF9500' : (g === 'other' ? '#86868B' : '#0071E3');
+
+  const W = 1000, H = 280, padL = 50, padR = 20, padT = 30, padB = 50;
+  const vals = ordered.map(d => d.count || 0);
+  const maxVal = Math.max(...vals, 1);
+  const groupW = (W - padL - padR) / Math.max(ordered.length, 1);
+  const barW = Math.min(Math.max(groupW * 0.6, 8), 60);
+
+  // 网格 + Y 轴
+  let grid = '';
+  for(let i = 0; i <= 4; i++){
+    const y = padT + (H - padT - padB) * (1 - i / 4);
+    const v = Math.round(maxVal * i / 4);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#E8E8ED" stroke-width="1"/>`;
+    grid += `<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#86868B" font-size="10" font-family="sans-serif">${v}</text>`;
+  }
+
+  // 柱子 + 顶部占比 + 底部标签
+  let bars = '', labels = '';
+  ordered.forEach((d, i) => {
+    const cx = padL + groupW * i + groupW / 2;
+    const v = d.count || 0;
+    const h = v / maxVal * (H - padT - padB);
+    const baseY = H - padB;
+    const color = colorOf(d.grade);
+    bars += `<rect x="${cx - barW/2}" y="${baseY - h}" width="${barW}" height="${h}" fill="${color}" rx="2"/>`;
+    // 柱顶显示数量与占比
+    const pct = (v / total * 100).toFixed(1);
+    if(v > 0){
+      bars += `<text x="${cx}" y="${baseY - h - 6}" text-anchor="middle" fill="#1D1D1F" font-size="11" font-family="sans-serif" font-weight="500">${v}</text>`;
+      bars += `<text x="${cx}" y="${baseY - h - 19}" text-anchor="middle" fill="#86868B" font-size="10" font-family="sans-serif">${pct}%</text>`;
+    }
+    labels += `<text x="${cx}" y="${H - padB + 16}" text-anchor="middle" fill="#6E6E73" font-size="11" font-family="sans-serif">${labelOf(d.grade)}</text>`;
+  });
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.innerHTML = grid + bars + labels;
+
+  // 副标题补充汇总信息
+  const inviteCount = inviteRow ? inviteRow.count : 0;
+  const invitePct = (inviteCount / total * 100).toFixed(1);
+  sub.textContent = `共 ${total} 位用户 · 邀请码用户 ${inviteCount} 位（${invitePct}%）`;
 }
 
 /* ==================== 邀请码管理 ==================== */
@@ -969,6 +1134,7 @@ function renderInviteList(list){
       <td>${c.used_at ? fmtTime(c.used_at) : '—'}</td>
       <td><button class="invite-delete-btn" onclick="deleteInvite('${esc(c.code)}')" ${c.used_at ? 'disabled' : ''}>删除</button></td>
     </tr>`).join('');
+  makeTableCollapsible('inviteListBody', COLLAPSE_THRESHOLD);
 }
 
 async function createInvite(){
@@ -996,7 +1162,6 @@ async function createInvite(){
     document.getElementById('inviteCustomCode').value = '';
     document.getElementById('inviteNote').value = '';
     await loadInviteList();
-    // 刷新统计数字
     try {
       const sr = await fetch(`${API_BASE}/admin/stats?key=${encodeURIComponent(adminKey)}`);
       if(sr.ok){ const sd = await sr.json(); renderInviteStats(sd.invite); }
@@ -1032,7 +1197,6 @@ async function deleteInvite(code){
 
 function copyCode(code){
   navigator.clipboard.writeText(code).then(() => {
-    // 短暂提示
     const el = event.target;
     const orig = el.textContent;
     el.textContent = '已复制';
@@ -1043,15 +1207,18 @@ function copyCode(code){
 document.getElementById('inviteCreateBtn').addEventListener('click', createInvite);
 
 /* ==================== Tab 导航切换 ==================== */
+const TAB_IDS = ['overview', 'growth', 'users', 'content', 'ai', 'security', 'invite'];
+
 function switchTab(tabName){
   // 切换导航按钮选中状态
   document.querySelectorAll('.admin-nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabName);
   });
   // 切换显示对应 tab div
-  document.getElementById('tab-overview').style.display = tabName === 'overview' ? '' : 'none';
-  document.getElementById('tab-users').style.display = tabName === 'users' ? '' : 'none';
-  document.getElementById('tab-invite').style.display = tabName === 'invite' ? '' : 'none';
+  TAB_IDS.forEach(id => {
+    const el = document.getElementById('tab-' + id);
+    if(el) el.style.display = id === tabName ? '' : 'none';
+  });
   // 切换到用户管理时自动加载用户列表（仅首次）
   if(tabName === 'users' && !window._usersLoaded){
     loadUsers(1);
@@ -1060,14 +1227,13 @@ function switchTab(tabName){
 }
 
 /* ==================== 用户管理 ==================== */
-let currentUsersPage = 1; // 当前用户列表页码
+let currentUsersPage = 1;
+let currentSortBy = 'last_visit';
 
-// 邀请码用户 email 以 invite: 开头，显示为「邀请码用户」
 function displayName(email){
   return (email && email.startsWith('invite:')) ? '邀请码用户' : esc(email);
 }
 
-// 秒级时长格式化为 xh ym 或 xm
 function formatDuration(sec){
   if(!sec) return '0m';
   if(sec >= 3600) return `${Math.floor(sec/3600)}h ${Math.floor((sec%3600)/60)}m`;
@@ -1078,10 +1244,12 @@ function formatDuration(sec){
 async function loadUsers(page = 1){
   currentUsersPage = page;
   const search = document.getElementById('userSearchInput').value.trim();
+  const sortBy = document.getElementById('userSortSelect') ? document.getElementById('userSortSelect').value : 'last_visit';
+  currentSortBy = sortBy;
   const body = document.getElementById('userListBody');
   body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#86868B;padding:24px">加载中…</td></tr>';
   try{
-    const resp = await fetch(`${API_BASE}/admin/users?key=${encodeURIComponent(adminKey)}&page=${page}&pageSize=50${search ? '&search=' + encodeURIComponent(search) : ''}`);
+    const resp = await fetch(`${API_BASE}/admin/users?key=${encodeURIComponent(adminKey)}&page=${page}&pageSize=50&sortBy=${sortBy}${search ? '&search=' + encodeURIComponent(search) : ''}`);
     if(!resp.ok) throw new Error('加载失败');
     const data = await resp.json();
     renderUserList(data, page);
@@ -1105,7 +1273,6 @@ function renderUserList(data, page){
     const status = u.banned
       ? '<span class="user-status banned">已封禁</span>'
       : '<span class="user-status normal">正常</span>';
-    // 封禁时显示「解封」，正常时显示「封禁」，均为红色
     const banBtn = u.banned
       ? `<button class="user-action-btn ban" onclick="unbanUser('${esc(email)}')">解封</button>`
       : `<button class="user-action-btn ban" onclick="banUser('${esc(email)}')">封禁</button>`;
@@ -1113,7 +1280,7 @@ function renderUserList(data, page){
       <td>${displayName(email)}</td>
       <td>${fmtTime(u.verifiedAt)}</td>
       <td>${fmtTime(u.lastVisit)}</td>
-      <td>${u.visitCount || 0}</td>
+      <td>${u.viewCount || 0}</td>
       <td>${u.favCount || 0}</td>
       <td>${u.subCount || 0}</td>
       <td>${status}</td>
@@ -1160,54 +1327,47 @@ function renderUserDetail(data){
   const reports = data.reports || [];
   const tokens = data.tokens || [];
 
-  // 基本信息字段
   const pledged = u.pledged ? '<span style="color:#34C759">已承诺</span>' : '<span style="color:#86868B">未承诺</span>';
   const banStatus = u.banned
     ? `<span style="color:var(--danger)">已封禁（${fmtTime(u.bannedAt)}）</span>`
     : '<span style="color:#34C759">正常</span>';
 
-  // 收藏列表（最多展示前 50 条）
+  // 收藏列表
   const favsHtml = favs.length === 0 ? '<div class="modal-empty">暂无收藏</div>' : `
     <table class="data-table">
-      <thead><tr><th>洞号</th><th>分类</th><th>收藏量</th><th>回复数</th><th>内容摘要</th></tr></thead>
+      <thead><tr><th>洞号</th><th>收藏量</th><th>回复数</th><th>内容摘要</th></tr></thead>
       <tbody>
-        ${favs.slice(0,50).map(f => `<tr>
+        ${favs.map(f => `<tr>
           <td><a href="/?pid=${f.pid}" target="_blank">#${f.pid}</a></td>
-          <td>${esc(f.category || '其他')}</td>
           <td>${f.likenum || 0}</td>
           <td>${f.reply || 0}</td>
           <td class="text-cell">${esc((f.text||'').slice(0,60))}</td>
         </tr>`).join('')}
       </tbody>
     </table>
-    ${favs.length > 50 ? `<div class="modal-empty">共 ${favs.length} 条，仅展示前 50 条</div>` : ''}
   `;
 
-  // 订阅关键词（chip 标签展示）
   const subsHtml = subs.length === 0 ? '<div class="modal-empty">暂无订阅</div>' : `
     <div class="modal-chips">
       ${subs.map(s => `<span class="modal-chip">${esc(s.keyword)}</span>`).join('')}
     </div>
   `;
 
-  // 浏览历史（最多展示前 50 条）
+  // 浏览历史
   const viewsHtml = views.length === 0 ? '<div class="modal-empty">暂无浏览记录</div>' : `
     <table class="data-table">
-      <thead><tr><th>洞号</th><th>分类</th><th>浏览时间</th><th>停留时长</th><th>内容摘要</th></tr></thead>
+      <thead><tr><th>洞号</th><th>浏览时间</th><th>停留时长</th><th>内容摘要</th></tr></thead>
       <tbody>
-        ${views.slice(0,50).map(v => `<tr>
+        ${views.map(v => `<tr>
           <td><a href="/?pid=${v.pid}" target="_blank">#${v.pid}</a></td>
-          <td>${esc(v.category || '其他')}</td>
           <td>${fmtTime(v.viewedAt)}</td>
           <td>${formatDuration(v.duration)}</td>
           <td class="text-cell">${esc((v.text||'').slice(0,60))}</td>
         </tr>`).join('')}
       </tbody>
     </table>
-    ${views.length > 50 ? `<div class="modal-empty">共 ${views.length} 条，仅展示前 50 条</div>` : ''}
   `;
 
-  // 访问日志
   const visitsHtml = visits.length === 0 ? '<div class="modal-empty">暂无访问日志</div>' : `
     <table class="data-table">
       <thead><tr><th>IP</th><th>进入时间</th><th>最后活跃</th></tr></thead>
@@ -1221,7 +1381,6 @@ function renderUserDetail(data){
     </table>
   `;
 
-  // AI 报告调用
   const reportsHtml = reports.length === 0 ? '<div class="modal-empty">暂无 AI 报告调用</div>' : `
     <table class="data-table">
       <thead><tr><th>时间</th><th>IP</th><th>服务商</th><th>模式</th><th>状态</th></tr></thead>
@@ -1241,7 +1400,6 @@ function renderUserDetail(data){
     </table>
   `;
 
-  // Agent Token
   const tokensHtml = tokens.length === 0 ? '<div class="modal-empty">暂无 Agent Token</div>' : `
     <table class="data-table">
       <thead><tr><th>标签</th><th>创建时间</th><th>最后使用</th><th>调用次数</th><th>状态</th></tr></thead>
@@ -1260,7 +1418,6 @@ function renderUserDetail(data){
     </table>
   `;
 
-  // 底部封禁/解封按钮
   const banBtnText = u.banned ? '解封' : '封禁';
   const banAction = u.banned ? 'unbanUser' : 'banUser';
 
@@ -1314,18 +1471,25 @@ function renderUserDetail(data){
       </div>
     </div>
   `;
-  // 移除已有弹窗再插入新弹窗
   closeUserModal();
   document.body.insertAdjacentHTML('beforeend', html);
+
+  // 弹窗内表格也添加折叠功能
+  const modal = document.getElementById('userDetailModal');
+  if(modal){
+    modal.querySelectorAll('tbody').forEach(tb => {
+      const id = tb.id || ('modal-tb-' + Math.random().toString(36).slice(2));
+      tb.id = id;
+      makeTableCollapsible(id, COLLAPSE_THRESHOLD);
+    });
+  }
 }
 
-// 关闭用户详情弹窗
 function closeUserModal(){
   const m = document.getElementById('userDetailModal');
   if(m) m.remove();
 }
 
-// 封禁用户
 async function banUser(email){
   if(!confirm(`确认封禁用户 ${displayName(email)}？被封禁用户将无法登录和使用本站。`)) return;
   try{
@@ -1338,14 +1502,12 @@ async function banUser(email){
       const err = await resp.json();
       throw new Error(err.error || '封禁失败');
     }
-    // 刷新列表
     await loadUsers(currentUsersPage);
   }catch(e){
     alert(e.message);
   }
 }
 
-// 解封用户
 async function unbanUser(email){
   if(!confirm(`确认解封用户 ${displayName(email)}？`)) return;
   try{
@@ -1368,6 +1530,8 @@ async function unbanUser(email){
 document.getElementById('userSearchInput').addEventListener('keydown', e => {
   if(e.key === 'Enter') loadUsers(1);
 });
+// 排序下拉框变化触发重新加载
+document.getElementById('userSortSelect').addEventListener('change', () => loadUsers(1));
 </script>
 </body>
 </html>

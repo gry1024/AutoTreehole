@@ -179,7 +179,7 @@
 | 路由 | 方法 | 说明 |
 |------|------|------|
 | `/api/subscribe/list` | GET | 当前用户订阅列表 |
-| `/api/subscribe/add` | POST | 添加订阅（仅校园邮箱用户，每人最多 3 个） |
+| `/api/subscribe/add` | POST | 添加订阅（仅校园邮箱用户，每人最多 5 个） |
 | `/api/subscribe/remove` | POST | 删除单个订阅 |
 | `/api/subscribe/unsubscribe` | GET | 邮件内一键退订单个关键词（HMAC 签名 token，公开） |
 | `/api/subscribe/unsubscribe-all` | GET | 邮件内一键退订全部（HMAC 签名 token，公开） |

@@ -86,18 +86,6 @@ DAILY_REFRESH_SLEEP = 3.0      # 每日回刷翻页间隔秒数
 DAILY_REFRESH_HOUR = 3         # 触发小时（凌晨 3 点）
 DB_PATH = _os.environ.get("TREEHOLE_DB_PATH", "./treehole.db")  # 数据库文件路径
 UA = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
-
-# --- LLM 分类（MiniMax + Qwen fallback，可选）---
-MINIMAX_API_KEY = _os.environ.get("MINIMAX_API_KEY", "")
-MINIMAX_API_URL = "https://api.minimax.chat/v1/text/chatcompletion_v2"
-MINIMAX_MODEL = _os.environ.get("MINIMAX_MODEL", "MiniMax-M3")
-# 通义千问：MiniMax 限额时的备用分类模型
-QWEN_API_KEY = _os.environ.get("DASHSCOPE_API_KEY", "")
-QWEN_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-QWEN_MODEL = _os.environ.get("QWEN_MODEL", "qwen-flash")
-LLM_CLASSIFY_TIMEOUT = 8        # LLM 分类请求超时秒数
-LLM_CLASSIFY_MAX_TEXT = 500     # 传给 LLM 的正文最大字符数（省 token）
-LLM_RETRY_INTERVAL = 10         # 每隔多少轮检查一次 LLM 是否恢复（重试失败队列）
 # ====================================================================================
 
 HEADERS = {
@@ -128,8 +116,7 @@ def db_connect() -> sqlite3.Connection:
             raw         TEXT,
             crawled_at  INTEGER,
             updated_at  INTEGER,
-            deleted     INTEGER DEFAULT 0,
-            category    TEXT
+            deleted     INTEGER DEFAULT 0
         )
         """
     )
@@ -141,11 +128,6 @@ def db_connect() -> sqlite3.Connection:
     # 迁移：为旧表添加 deleted 列（0=正常，1=已被平台删除）
     try:
         conn.execute("ALTER TABLE holes ADD COLUMN deleted INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass  # 列已存在
-    # 迁移：为旧表添加 category 列（帖子内容分类）
-    try:
-        conn.execute("ALTER TABLE holes ADD COLUMN category TEXT")
     except sqlite3.OperationalError:
         pass  # 列已存在
     conn.execute(
@@ -166,17 +148,6 @@ def db_connect() -> sqlite3.Connection:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_pid ON comments(pid)")
-    # LLM 分类失败的重试队列
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS llm_retry_queue (
-            pid         INTEGER PRIMARY KEY,
-            text        TEXT,
-            enqueued_at INTEGER,
-            attempts    INTEGER DEFAULT 0
-        )
-        """
-    )
     conn.commit()
     return conn
 
@@ -186,145 +157,13 @@ def db_max_pid(conn: sqlite3.Connection) -> int:
     return row[0] or 0
 
 
-# ==================== 帖子分类（关键词词典法） ====================
-CATEGORY_KEYWORDS = {
-    "学习": ["考试", "期末", "期中", "课程", "选课", "学分", "绩点", "成绩", "论文", "作业",
-             "复习", "预习", "专业", "信科", "数学", "物理", "化学", "答辩", "毕业", "实习",
-             "考研", "保研", "出国", "gpa", "教授", "老师", "课", "实验", "报告", "quiz",
-             "midterm", "final", "论文", "开题", "导师", "实验室", "算法", "编程", "代码"],
-    "情感": ["喜欢", "表白", "恋爱", "分手", "暗恋", "crush", "男友", "女友", "单身",
-             "爱情", "心动", "告白", "ex", "对象", "脱单", "暧昧", "异地", "追",
-             "心动", "失恋", "情感", "树洞"],
-    "生活": ["食堂", "宿舍", "外卖", "快递", "天气", "睡眠", "作息", "健身", "运动",
-             "跑步", "日常", "洗澡", "空调", "暖气", "网", "校园卡", "充值", "洗衣",
-             "室友", "邻居", "校门", "自行车", "电动车"],
-    "时事": ["新闻", "政策", "社会", "疫情", "国际", "美国", "中国", "北京", "热点",
-             "事件", "争议", "讨论", "热搜", "时政", "经济", "就业", "失业"],
-    "娱乐": ["游戏", "电影", "音乐", "追剧", "动漫", "小说", "综艺", "演唱会",
-             "剧", "番", "抽卡", "开黑", "王者", "原神", "lol", "steam", "追星",
-             "偶像", "饭圈", "b站", "抖音"],
-    "求助": ["求助", "请问", "怎么办", "帮忙", "求推荐", "有没有", "怎么", "哪里",
-             "如何", "能不能", "可以吗", "求问", "急", "在线等"],
-}
-
-
-def classify_post(text: str) -> str:
-    """根据关键词词典对帖子正文进行分类，返回类别名称。"""
-    if not text:
-        return "其他"
-    s = text.lower()
-    scores = {}
-    for cat, keywords in CATEGORY_KEYWORDS.items():
-        score = 0
-        for kw in keywords:
-            if kw in s:
-                score += 1
-        if score > 0:
-            scores[cat] = score
-    if not scores:
-        return "其他"
-    return max(scores, key=scores.get)
-
-
-# ==================== LLM 分类（MiniMax） ====================
-VALID_CATEGORIES = {"学习", "情感", "生活", "时事", "娱乐", "求助", "其他"}
-
-_llm_healthy = True  # LLM 服务健康标记，失败后临时降级
-
-
-def _classify_with_api(api_url: str, api_key: str, model: str, snippet: str) -> Optional[str]:
-    """通用 LLM 分类请求：调用指定 API，返回有效类别名；失败返回 None。"""
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "你是帖子内容分类器。只返回一个类别名，从以下选项中选择：学习、情感、生活、时事、娱乐、求助、其他。不要输出任何解释、标点或其他内容。"
-            },
-            {
-                "role": "user",
-                "content": snippet
-            }
-        ],
-        "temperature": 0,
-        "max_tokens": 200,
-    }
-    try:
-        resp = requests.post(
-            api_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=LLM_CLASSIFY_TIMEOUT,
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-        # 提取有效分类名（LLM 可能附带标点或多余文字）
-        for cat in VALID_CATEGORIES:
-            if cat in content:
-                return cat
-        print(f"[llm] 无法识别返回内容: {content!r}", flush=True)
-        return None
-    except (requests.Timeout, requests.ConnectionError, requests.RequestException) as e:
-        print(f"[llm] 请求异常: {type(e).__name__}", flush=True)
-        return None
-
-
-def classify_post_llm(text: str) -> Optional[str]:
-    """调用 LLM 对帖子正文进行分类，返回类别名称；失败返回 None。
-    优先 MiniMax，限额/失败时自动 fallback 到 Qwen。
-    """
-    global _llm_healthy
-    if not MINIMAX_API_KEY and not QWEN_API_KEY:
-        return None
-    if not text or not text.strip():
-        return "其他"
-    # 截断超长文本，省 token
-    snippet = text.strip()[:LLM_CLASSIFY_MAX_TEXT]
-    # 1) 先试 MiniMax
-    if MINIMAX_API_KEY:
-        cat = _classify_with_api(MINIMAX_API_URL, MINIMAX_API_KEY, MINIMAX_MODEL, snippet)
-        if cat is not None:
-            _llm_healthy = True
-            return cat
-        print("[llm] MiniMax 分类失败，尝试 fallback 到 Qwen", flush=True)
-    # 2) MiniMax 失败，fallback 到 Qwen
-    if QWEN_API_KEY:
-        cat = _classify_with_api(QWEN_API_URL, QWEN_API_KEY, QWEN_MODEL, snippet)
-        if cat is not None:
-            _llm_healthy = True
-            print("[llm] Qwen fallback 分类成功", flush=True)
-            return cat
-    # 两个都失败，降级到关键词分类
-    print("[llm] MiniMax 与 Qwen 均失败，降级到关键词分类", flush=True)
-    _llm_healthy = False
-    return None
-
-
-def classify_post_hybrid(text: str) -> tuple:
-    """混合分类策略：优先 LLM，失败回退关键词法。
-    返回 (category, used_llm) 二元组。
-    used_llm=True 表示用了 LLM；False 表示用了关键词兜底。
-    """
-    cat = classify_post_llm(text)
-    if cat is not None:
-        return cat, True
-    return classify_post(text), False
-
-
 def db_insert(conn: sqlite3.Connection, h: dict) -> bool:
     """插入一条树洞；pid 重复则忽略。返回是否为新插入。"""
-    text = h.get("text") or ""
-    category, used_llm = classify_post_hybrid(text)
     cur = conn.execute(
         """
         INSERT OR IGNORE INTO holes
-        (pid, text, type, timestamp, reply, likenum, extra, anonymous, tag, image_size, raw, crawled_at, category)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (pid, text, type, timestamp, reply, likenum, extra, anonymous, tag, image_size, raw, crawled_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             h.get("pid"), h.get("text"), h.get("type"), h.get("timestamp"),
@@ -333,20 +172,10 @@ def db_insert(conn: sqlite3.Connection, h: dict) -> bool:
             json.dumps(h.get("image_size"), ensure_ascii=False) if h.get("image_size") else None,
             json.dumps(h, ensure_ascii=False),
             int(time.time()),
-            category,
         ),
     )
     conn.commit()
     is_new = cur.rowcount > 0
-    # LLM 分类失败时，将帖子加入重试队列
-    if is_new and not used_llm:
-        pid = h.get("pid")
-        conn.execute(
-            "INSERT OR IGNORE INTO llm_retry_queue (pid, text, enqueued_at, attempts) VALUES (?,?,?,0)",
-            (pid, text, int(time.time()))
-        )
-        conn.commit()
-        print(f"  └─ [llm] pid={pid} 关键词兜底分类={category}，已入重试队列", flush=True)
     return is_new
 
 
@@ -513,46 +342,6 @@ def scan_deleted_posts(conn: sqlite3.Connection, days: int = 7,
     print(f"[scan] 删除检测完成：检查 {len(to_check)} 条，标记 {deleted_count} 条已删除", flush=True)
 
 
-def retry_failed_llm(conn: sqlite3.Connection, max_items: int = 50) -> None:
-    """重试 LLM 分类失败的帖子。
-
-    当 LLM 服务恢复后，从 llm_retry_queue 中取出帖子重新分类。
-    成功的从队列移除并更新 holes.category；失败的保留在队列中（增加 attempts）。
-    如果 LLM 仍不健康，直接返回不处理。
-    """
-    if not _llm_healthy:
-        # 先用一个轻量探测判断 LLM 是否恢复
-        probe = classify_post_llm("测试")
-        if probe is None:
-            return
-        print("[llm] 服务已恢复，开始重试失败队列", flush=True)
-
-    rows = conn.execute(
-        "SELECT pid, text FROM llm_retry_queue ORDER BY enqueued_at ASC LIMIT ?",
-        (max_items,)
-    ).fetchall()
-    if not rows:
-        return
-
-    print(f"[llm-retry] 队列中有 {len(rows)} 条待重试", flush=True)
-    success = 0
-    for pid, text in rows:
-        cat = classify_post_llm(text or "")
-        if cat is not None:
-            conn.execute("UPDATE holes SET category=? WHERE pid=?", (cat, pid))
-            conn.execute("DELETE FROM llm_retry_queue WHERE pid=?", (pid,))
-            conn.commit()
-            success += 1
-            print(f"  ✓ pid={pid} 重新分类为 {cat}", flush=True)
-        else:
-            conn.execute("UPDATE llm_retry_queue SET attempts=attempts+1 WHERE pid=?", (pid,))
-            conn.commit()
-            # LLM 又挂了，停止重试
-            print(f"  ✗ pid={pid} 重试失败，LLM 可能又挂了，停止本轮重试", flush=True)
-            break
-    print(f"[llm-retry] 本轮完成：成功 {success}/{len(rows)} 条", flush=True)
-
-
 def refresh_recent_posts(conn: sqlite3.Connection) -> None:
     """回刷最近帖子的元数据（收藏量/评论数），保持与线上同步。
 
@@ -709,10 +498,6 @@ def main() -> None:
         if not first_run and round_count % REFRESH_INTERVAL == 0:
             print(f"[refresh] 第 {round_count} 轮，开始回刷最近帖子元数据…", flush=True)
             refresh_recent_posts(conn)
-
-        # 每 LLM_RETRY_INTERVAL 轮重试 LLM 分类失败的帖子
-        if not first_run and round_count % LLM_RETRY_INTERVAL == 0:
-            retry_failed_llm(conn)
 
         # 首次运行只回抓 INITIAL_PAGES 页作种子；后续按 MAX_DISCOVER_PAGES 防突发
         pages = INITIAL_PAGES if first_run else MAX_DISCOVER_PAGES

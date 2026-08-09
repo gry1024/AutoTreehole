@@ -773,6 +773,17 @@ mark{
 .fav-btn.is-fav{color:#B87878}
 .fav-btn.is-fav svg{fill:#B87878;stroke:#B87878}
 .fav-btn:not(.is-fav) svg{fill:none;stroke:currentColor}
+/* 详情页 AI 总结按钮（与 fav-btn 风格一致） */
+.ai-sum-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:0.867rem;font-family:var(--font-sans);
+  color:var(--fg-secondary);background:none;border:none;
+  cursor:pointer;padding:4px 10px;border-radius:var(--radius-sm);
+  transition:color .2s,background .2s;
+}
+.ai-sum-btn:hover{background:var(--bg-hover);color:var(--fg)}
+.ai-sum-btn svg{width:15px;height:15px}
+.ai-sum-btn.active{color:var(--accent-blue)}
 /* 订阅推送面板 */
 .sub-add-wrap{
   display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;
@@ -929,6 +940,79 @@ mark{
 .detail-meta-row b{color:var(--fg);font-weight:500}
 
 .comments-section{margin-top:0}
+/* 详情页底部容器：默认单列，启用 AI 总结时变为左右分栏 */
+.detail-bottom-wrap{display:block}
+.detail-bottom-wrap.has-summary{
+  display:grid;
+  grid-template-columns:2fr 1fr;
+  gap:32px;align-items:start;
+}
+/* AI 总结面板（右侧） */
+.ai-summary-panel{
+  position:sticky;top:72px;
+  background:var(--bg-elevated);
+  border:1px solid var(--divider-subtle);
+  border-radius:var(--radius);
+  padding:20px;max-height:calc(100vh - 96px);
+  overflow-y:auto;
+}
+.ai-summary-head{
+  display:flex;align-items:center;gap:10px;
+  margin-bottom:16px;flex-wrap:wrap;
+}
+.ai-summary-head h3{
+  font-size:1rem;font-weight:600;
+  font-family:var(--font-sans);
+  color:var(--fg);margin-right:auto;
+}
+.ai-summary-model{
+  font-size:0.8rem;font-family:var(--font-sans);
+  color:var(--fg);background:var(--bg);
+  border:1px solid var(--divider);
+  border-radius:var(--radius-sm);
+  padding:4px 8px;cursor:pointer;max-width:140px;
+}
+.ai-summary-model:disabled{opacity:0.5;cursor:not-allowed}
+.ai-summary-close{
+  background:none;border:none;cursor:pointer;
+  color:var(--fg-secondary);font-size:1.2rem;
+  line-height:1;padding:2px 4px;border-radius:var(--radius-sm);
+}
+.ai-summary-close:hover{background:var(--bg-hover);color:var(--fg)}
+.ai-summary-regen{
+  font-size:0.8rem;font-family:var(--font-sans);
+  color:var(--fg-secondary);background:none;
+  border:1px solid var(--divider);
+  border-radius:var(--radius-sm);
+  padding:3px 10px;cursor:pointer;transition:all .2s;
+}
+.ai-summary-regen:hover:not(:disabled){border-color:var(--accent-blue);color:var(--accent-blue)}
+.ai-summary-regen:disabled{opacity:0.5;cursor:not-allowed}
+.ai-summary-body{
+  font-size:0.933rem;line-height:1.8;
+  font-family:var(--font-sans);font-weight:300;
+  color:var(--fg);
+}
+.ai-summary-body h3{font-size:0.933rem;font-weight:600;margin:14px 0 6px;font-family:var(--font-sans)}
+.ai-summary-body h3:first-child{margin-top:0}
+.ai-summary-body p{margin:6px 0}
+.ai-summary-body ul,.ai-summary-body ol{margin:6px 0;padding-left:20px}
+.ai-summary-body li{margin:3px 0}
+.ai-summary-loading{
+  display:flex;flex-direction:column;align-items:center;
+  gap:14px;padding:32px 16px;color:var(--fg-secondary);
+  font-size:0.933rem;font-weight:300;
+}
+.ai-summary-loading .spinner{width:24px;height:24px;border-width:2.5px}
+.ai-summary-empty{
+  text-align:center;padding:32px 16px;
+  color:var(--fg-tertiary);font-size:0.933rem;font-weight:300;
+}
+.ai-summary-error{
+  background:rgba(255,59,48,0.08);color:#FF3B30;
+  padding:12px 16px;border-radius:var(--radius-sm);
+  font-size:0.867rem;
+}
 .comments-head{
   display:flex;align-items:center;gap:12px;
   padding:20px 0;border-bottom:1px solid var(--divider-subtle);
@@ -1437,6 +1521,9 @@ mark{
   .container{padding:28px 20px 56px}
   .section-title{font-size:1.467rem}
   .section-head{margin-bottom:20px}
+  /* 详情页 AI 总结：窄屏改为上下堆叠，总结在上 */
+  .detail-bottom-wrap.has-summary{grid-template-columns:1fr;gap:20px}
+  .ai-summary-panel{position:static;max-height:none;order:-1}
 }
 @media (max-width:640px){
   .header-inner{padding:10px 14px;flex-direction:column;align-items:flex-start;gap:6px}
@@ -4524,15 +4611,30 @@ function renderDetail(data, area){
           <svg viewBox="0 0 16 16" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14s-5-3.5-5-7a2.8 2.8 0 015-1.8A2.8 2.8 0 0113 7c0 3.5-5 7-5 7z"/></svg>
           <span class="fav-label">收藏</span>
         </button>
+        <button class="ai-sum-btn" id="aiSumBtn" data-pid="${esc(post.pid)}" title="用 AI 总结本帖正文与评论">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1l1.8 4.2L14 6l-3.2 2.8L11.8 13 8 10.8 4.2 13l1-4.2L2 6l4.2-.8z"/></svg>
+          <span>AI 总结</span>
+        </button>
         <a href="https://treehole.pku.edu.cn/web/#/hole/${esc(post.pid)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto">在树洞打开 ↗</a>
       </div>
     </div>
-    <div class="comments-section">
-      <div class="comments-head">
-        <h3>评论</h3>
-        <span class="count">${comments.length} 条</span>
+    <div class="detail-bottom-wrap" id="detailBottomWrap">
+      <div class="comments-section">
+        <div class="comments-head">
+          <h3>评论</h3>
+          <span class="count">${comments.length} 条</span>
+        </div>
+        <div class="comment-list">${commentsHTML}</div>
       </div>
-      <div class="comment-list">${commentsHTML}</div>
+      <aside class="ai-summary-panel" id="aiSummaryPanel" hidden>
+        <div class="ai-summary-head">
+          <h3>AI 总结</h3>
+          <select class="ai-summary-model" id="aiSummaryModel" title="选择 LLM 模型"></select>
+          <button class="ai-summary-regen" id="aiSummaryRegen" title="重新生成总结">重新生成</button>
+          <button class="ai-summary-close" id="aiSummaryClose" title="关闭总结面板">×</button>
+        </div>
+        <div class="ai-summary-body" id="aiSummaryBody"></div>
+      </aside>
     </div>`;
   // 点击洞号复制
   const pidCopyEl = area.querySelector('.detail-pid-copy');
@@ -4548,6 +4650,8 @@ function renderDetail(data, area){
   }
   // 收藏按钮初始化
   initDetailFavBtn(post.pid);
+  // AI 总结按钮初始化
+  initAiSummary(post.pid);
 }
 
 /* ==================== 帖子收藏 ==================== */
@@ -4579,6 +4683,167 @@ async function initDetailFavBtn(pid){
       flash('error', e.message || '操作失败');
     }
   });
+}
+
+/* ==================== 详情页 AI 总结 ==================== */
+// 初始化详情页 AI 总结按钮（绑定点击、模型选择、关闭、重新生成）
+function initAiSummary(pid){
+  const btn = document.getElementById('aiSumBtn');
+  const panel = document.getElementById('aiSummaryPanel');
+  const wrap = document.getElementById('detailBottomWrap');
+  const modelSel = document.getElementById('aiSummaryModel');
+  const regenBtn = document.getElementById('aiSummaryRegen');
+  const closeBtn = document.getElementById('aiSummaryClose');
+  const body = document.getElementById('aiSummaryBody');
+  if(!btn || !panel || !wrap || !modelSel || !body) return;
+
+  // 填充模型选择器：public 可用模型 + 用户自建配置
+  function fillModelSelector(){
+    const opts = [];
+    // 可用 public 模型
+    const pubAvail = (providersData || []).filter(p => p.public && p.available);
+    pubAvail.forEach(p => {
+      (p.models || [p.model]).forEach(m => opts.push(`<option value="public:${p.name}:${m}">${p.label} · ${m}</option>`));
+    });
+    // 用户自建配置
+    (customConfigs || []).forEach(c => {
+      const tag = c.direct ? '直连' : '代理';
+      opts.push(`<option value="custom:${c.id}">${c.name}（${tag}）</option>`);
+    });
+    modelSel.innerHTML = opts.join('');
+    if(!opts.length){
+      modelSel.innerHTML = '<option value="" disabled selected>无可用模型</option>';
+    }
+    return opts.length > 0;
+  }
+
+  // 解析选中的模型配置，返回 {type, provider, model, config} 或 null
+  function getSelectedSummaryConfig(){
+    const val = modelSel.value;
+    if(!val) return null;
+    const parts = val.split(':');
+    if(parts[0] === 'public'){
+      // public:providerName:modelName
+      const providerName = parts[1];
+      const modelName = parts.slice(2).join(':');
+      return { type:'public', provider:providerName, model:modelName };
+    }else if(parts[0] === 'custom'){
+      // custom:configId
+      const cfg = (customConfigs || []).find(c => c.id === parts[1]);
+      if(!cfg) return null;
+      return { type:'custom', config:cfg };
+    }
+    return null;
+  }
+
+  // 渲染 Markdown（复用报告页的渲染逻辑，带 XSS 防护）
+  function renderSummaryMarkdown(md){
+    try{
+      if(typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined'){
+        const html = marked.parse(md);
+        return DOMPurify.sanitize(html);
+      }
+    }catch(e){}
+    return '<p>' + esc(md) + '</p>';
+  }
+
+  // 核心调用：根据模式调 LLM 生成总结
+  let summarizing = false;
+  let selectorFilled = false; // 模型选择器是否已填充过
+  async function runSummary(){
+    if(summarizing) return;
+    // 仅首次填充，避免覆盖用户选择
+    let hasModel;
+    if(!selectorFilled){
+      hasModel = fillModelSelector();
+      selectorFilled = true;
+    }else{
+      hasModel = modelSel.options.length > 0 && !modelSel.options[0].disabled;
+    }
+    if(!hasModel){
+      panel.hidden = false;
+      wrap.classList.add('has-summary');
+      btn.classList.add('active');
+      body.innerHTML = '<div class="ai-summary-error">无可用模型。请在「AI 报告」页配置 LLM 服务后重试。</div>';
+      return;
+    }
+    const cfg = getSelectedSummaryConfig();
+    if(!cfg){ flash('error', '请选择一个模型'); return; }
+
+    summarizing = true;
+    panel.hidden = false;
+    wrap.classList.add('has-summary');
+    btn.classList.add('active');
+    modelSel.disabled = true;
+    regenBtn.disabled = true;
+    body.innerHTML = '<div class="ai-summary-loading"><span class="spinner"></span><div>正在用 AI 阅读本帖与评论…</div></div>';
+
+    try{
+      let content;
+      if(cfg.type === 'public'){
+        // 服务器代理模式（public）：默认用 provider 的默认模型，
+        // 若用户选了非默认模型则通过 customConfig 指定（apiKey=__public__ 占位，后端用站长 Key）
+        const reqBody = { pid, provider: cfg.provider };
+        const prov = (providersData || []).find(p => p.name === cfg.provider);
+        if(prov && prov.model && cfg.model !== prov.model){
+          reqBody.customConfig = { model: cfg.model, url:'', fmt: prov.fmt || 'openai', apiKey:'__public__' };
+        }
+        const r = await api('/summarize', { method:'POST', body: reqBody });
+        content = r.content;
+      }else if(cfg.type === 'custom' && cfg.config.direct){
+        // 直连模式：prepare → 浏览器直连 LLM → enrich
+        const prep = await api('/summarize/prepare', { method:'POST', body:{ pid } });
+        const raw = await callLlmDirect(cfg.config.url, cfg.config.apiKey, cfg.config.model, cfg.config.fmt, prep.system, prep.user);
+        if(!raw || !raw.trim()) throw new Error('模型返回了空内容');
+        const enr = await api('/report/enrich', { method:'POST', body:{ content: raw } });
+        content = enr.content;
+      }else if(cfg.type === 'custom' && !cfg.config.direct){
+        // 服务器代理模式（custom，用户 Key 上传服务器）
+        const r = await api('/summarize', { method:'POST', body:{
+          pid, provider: cfg.config.provider || 'custom',
+          customConfig: { apiKey: cfg.config.apiKey, model: cfg.config.model, url: cfg.config.url, fmt: cfg.config.fmt }
+        }});
+        content = r.content;
+      }
+      body.innerHTML = renderSummaryMarkdown(content);
+      // 重新绑定洞号链接（复用 linkifyHoleIds 逻辑已在 enrich 中处理）
+      body.querySelectorAll('a[href^="/?pid="]').forEach(a => {
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          const m = a.getAttribute('href').match(/pid=(\d+)/);
+          if(m) loadDetail(m[1]);
+        });
+      });
+    }catch(e){
+      let msg = e.message || '总结生成失败';
+      if(e.code === 'QUOTA') msg = '模型繁忙，请稍后再试或换一个模型';
+      body.innerHTML = `<div class="ai-summary-error">${esc(msg)}</div>`;
+    }finally{
+      summarizing = false;
+      modelSel.disabled = false;
+      regenBtn.disabled = false;
+    }
+  }
+
+  // 关闭总结面板
+  function closeSummary(){
+    panel.hidden = true;
+    wrap.classList.remove('has-summary');
+    btn.classList.remove('active');
+    body.innerHTML = '';
+  }
+
+  // 绑定事件
+  btn.addEventListener('click', () => {
+    if(panel.hidden){ runSummary(); }
+    else{ closeSummary(); }
+  });
+  regenBtn.addEventListener('click', runSummary);
+  closeBtn.addEventListener('click', closeSummary);
+  modelSel.addEventListener('change', runSummary);
+
+  // 简化的 provider label 映射（用于判断是否传 customConfig）
+  // 实际只需 provider 名，后端会处理默认 model
 }
 
 // 加载收藏列表

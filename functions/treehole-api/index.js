@@ -1383,6 +1383,89 @@ function handleReportEnrich(body) {
   return { content: enrichReport(body.content) };
 }
 
+// ==================== 单帖 AI 总结 ====================
+/**
+ * 构建单帖总结 prompt：把帖子正文 + 全部评论喂给 LLM，要求结构化总结。
+ * @param {object} post  - queryShow 返回的 post
+ * @param {Array}  comments - queryShow 返回的 comments
+ */
+function buildSummaryPrompt(post, comments) {
+  const fmtComment = (c, i) => {
+    const name = c.name || "匿名";
+    const quote = c.quote ? ` [回复#${c.quote}]` : "";
+    return `${i + 1}楼 ${name}${quote}: ${(c.text || "").trim()}`;
+  };
+  const commentsBlock = comments.length
+    ? comments.map(fmtComment).join("\n\n")
+    : "（暂无评论）";
+
+  const system = "你是善于提炼信息的中文内容分析师。用户会给你一条匿名校园论坛帖子及其全部评论，请客观、准确地总结其核心内容，不编造、不扩散未经证实的信息。";
+  const user = `以下是北京大学树洞的一条帖子及其全部评论：
+
+## 帖子 #${post.pid}
+${(post.text || "").trim()}
+
+## 评论（共 ${comments.length} 条）
+${commentsBlock}
+
+请用简洁的 Markdown 输出总结，严格包含以下结构：
+
+### 核心话题
+1-2 句话概括帖子在讨论什么。
+
+### 主要观点
+分条列出评论中出现的代表性观点（按支持/反对/中立归类），每条标注楼层序号。
+
+### 情绪倾向
+用一句话描述整体情绪基调（如：理性讨论 / 情绪激烈 / 求助焦虑 / 轻松调侃）。
+
+### 关键信息
+列出对北大师生有参考价值的实质性信息（如时间、地点、政策、经验等），无则写"无"。
+
+要求：
+- 全程中文，客观中立
+- 不编造评论中不存在的内容
+- 楼层序号即评论的排列顺序（1楼、2楼……）
+- 控制在 300 字以内`;
+  return { system, user };
+}
+
+/**
+ * 单帖总结预处理：只构建 prompt，不调用 LLM（用于前端直连模式）。
+ */
+function handleSummaryPrepare(body) {
+  const pid = validateInt(body.pid, 1, Number.MAX_SAFE_INTEGER);
+  const data = queryShow(pid);
+  if (!data || !data.post) throw new Error("帖子不存在");
+  const pd = buildSummaryPrompt(data.post, data.comments);
+  return { system: pd.system, user: pd.user, commentCount: data.comments.length };
+}
+
+/**
+ * 单帖总结（服务器代理模式）：构建 prompt → 调用 LLM → 返回总结。
+ */
+async function handleSummary(body, ip) {
+  const provider = body.provider || "minimax";
+  const customConfig = body.customConfig || null;
+  const mode = customConfig ? "custom-proxy" : "public";
+  if (!customConfig && !LLM_PROVIDERS[provider]) throw new Error(`未知 provider: ${provider}`);
+  if (!customConfig && !LLM_PROVIDERS[provider].public) {
+    throw new Error(`${provider} 需要自行提供 API Key，请在前端配置或使用前端直连模式`);
+  }
+  const pid = validateInt(body.pid, 1, Number.MAX_SAFE_INTEGER);
+  const data = queryShow(pid);
+  if (!data || !data.post) throw new Error("帖子不存在");
+  const pd = buildSummaryPrompt(data.post, data.comments);
+  try {
+    const content = await callLlmWithFallback(pd.system, pd.user, provider, customConfig, ip);
+    logReportCall(ip, provider, mode + "-summary", true);
+    return { content: enrichReport(content) };
+  } catch (e) {
+    logReportCall(ip, provider, mode + "-summary", false, e.message);
+    throw e;
+  }
+}
+
 // ==================== 请求体读取 ====================
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -3087,6 +3170,36 @@ const server = http.createServer(async (req, res) => {
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁，每 IP 每分钟限 30 次"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       sendJson(res, 200, handleReportEnrich(body));
+      return;
+    }
+
+    // 单帖 AI 总结（服务器代理模式：用站长或用户配置的 Key 调用 LLM）
+    if (route === "summarize") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!rateLimit(ip, true)) { alertAdmin("warn", "rate_limit", "AI 总结接口触发频率限制", `路由: /api/summarize`, ip); sendError(res, 429, "请求过于频繁。限制：每 IP 每分钟 5 次、每天 30 次；全局每天 500 次"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      try {
+        sendJson(res, 200, await handleSummary(body, ip));
+      } catch (e) {
+        if (e && e.code === "QUOTA") {
+          sendJson(res, 503, { error: e.message, code: "QUOTA" });
+        } else {
+          sendError(res, 500, e.message);
+        }
+      }
+      return;
+    }
+
+    // 单帖总结预处理（前端直连模式：只返回 prompt，不调用 LLM，网友 Key 不经过服务器）
+    if (route === "summarize/prepare") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁，每 IP 每分钟限 30 次"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      sendJson(res, 200, handleSummaryPrepare(body));
       return;
     }
 
