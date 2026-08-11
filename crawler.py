@@ -31,6 +31,7 @@ import sys
 import time
 from datetime import datetime
 from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 import requests
 
@@ -214,13 +215,16 @@ def db_update_meta(conn: sqlite3.Connection, h: dict) -> bool:
 
 
 # ------------------- API -------------------
-def api_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
-    """GET 一个 API，返回解析后的 JSON；鉴权失效返回 None。"""
-    try:
-        r = requests.get(BASE + path, params=params, headers=HEADERS, timeout=15)
-    except Exception as e:
-        print(f"[net] 请求异常 {path}: {e}", flush=True)
-        return None
+# 硬超时秒数：即使底层 socket select 卡死，也强制放弃整个请求线程。
+# requests 的 timeout 参数在连接建立/TLS 协商阶段不总是可靠，
+# 这里用线程级 future.result(timeout) 兜底，防止爬虫永久挂起。
+HARD_TIMEOUT = 30
+_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="api")
+
+
+def _do_request(path: str, params: Optional[dict]) -> Optional[dict]:
+    """实际执行 requests.get 的内部函数（在线程池中运行）。"""
+    r = requests.get(BASE + path, params=params, headers=HEADERS, timeout=15)
     if r.status_code == 401:
         return None
     try:
@@ -229,10 +233,26 @@ def api_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
         print(f"[net] 非 JSON 响应 {path}: {r.status_code} {r.text[:120]}", flush=True)
         return None
     if not d.get("success"):
-        # 40001/40002 表示 token/uuid 失效或需短信验证
         print(f"[auth] 接口拒绝: code={d.get('code')} msg={d.get('message')}", flush=True)
         return None
     return d
+
+
+def api_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
+    """GET 一个 API，返回解析后的 JSON；鉴权失效或超时返回 None。
+
+    使用线程池 + future.result(HARD_TIMEOUT) 做硬超时保护，
+    防止 requests 在 DNS/TCP/TLS 阶段卡死导致整个爬虫挂起。
+    """
+    try:
+        fut = _executor.submit(_do_request, path, params)
+        return fut.result(timeout=HARD_TIMEOUT)
+    except FuturesTimeoutError:
+        print(f"[net] 硬超时 {HARD_TIMEOUT}s {path}（底层 socket 可能卡死，已放弃）", flush=True)
+        return None
+    except Exception as e:
+        print(f"[net] 请求异常 {path}: {e}", flush=True)
+        return None
 
 
 def discover_new(max_seen: int, max_pages: int, conn=None) -> List[dict]:
@@ -286,24 +306,33 @@ def fetch_comments(pid: int) -> List[dict]:
     return comments
 
 
+def _do_check_deleted(pid: int) -> Optional[dict]:
+    """实际执行删除检测请求的内部函数（在线程池中运行）。"""
+    r = requests.get(BASE + f"pku_comment_v3/{pid}",
+                     params={"page": 1, "limit": 1, "sort": "asc"},
+                     headers=HEADERS, timeout=15)
+    if r.status_code == 401:
+        return None
+    try:
+        return r.json()
+    except Exception:
+        return None
+
+
 def is_post_deleted(pid: int) -> bool:
     """通过评论 API 检测帖子是否已被平台删除。
 
     逻辑：请求评论列表，若 success=false 且非 token 失效（40001/40002），
     则判定为帖子已被删除。正常返回或网络异常时返回 False（不误判）。
+    使用线程池 + 硬超时保护，防止 socket 卡死。
     """
     try:
-        r = requests.get(BASE + f"pku_comment_v3/{pid}",
-                         params={"page": 1, "limit": 1, "sort": "asc"},
-                         headers=HEADERS, timeout=15)
-    except Exception:
-        return False  # 网络异常，不确定，不标记
-    if r.status_code == 401:
-        return False  # 鉴权失效
-    try:
-        d = r.json()
-    except Exception:
-        return False
+        fut = _executor.submit(_do_check_deleted, pid)
+        d = fut.result(timeout=HARD_TIMEOUT)
+    except (FuturesTimeoutError, Exception):
+        return False  # 超时或异常，不确定，不标记
+    if d is None:
+        return False  # 鉴权失效或解析失败
     if d.get("success"):
         return False  # 正常返回，帖子存在
     # success=false：区分 token 失效与帖子不存在
