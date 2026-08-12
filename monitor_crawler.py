@@ -32,8 +32,8 @@ from email.header import Header
 from pathlib import Path
 
 # ========== 可调参数 ==========
-# 距最后一次 DB 更新多少秒视为异常（默认 1 小时 = 3600s）
-STALE_THRESHOLD_SEC = int(os.environ.get("MONITOR_STALE_SEC", "3600"))
+# 距最后一次 DB 更新多少秒视为异常（默认 15 分钟 = 900s）
+STALE_THRESHOLD_SEC = int(os.environ.get("MONITOR_STALE_SEC", "900"))
 # 报警文件（记录同一故障是否已发过邮件，避免重复刷屏）
 STATE_FILE = Path("/var/log/treehole/monitor_state.json")
 # 监控日志目录

@@ -71,6 +71,7 @@ PAGE_SIZE = 25                 # 帖子列表每页条数（服务端上限 25�
 COMMENT_PAGE_SIZE = 15         # 评论列表每页条数（服务端上限 15）
 SLEEP_PER_ITEM = 5.0           # 每条帖子入库后的休眠秒数（速率控制：5 秒/条）
 COMMENT_SLEEP = 2.0            # 每次评论请求间隔秒数（评论分页用）
+MAX_COMMENT_PAGE_SKIP = 5      # 抓评论时最多连续跳过几页失败（防止卡死）
 ROUND_SLEEP = 60.0             # 每轮发现无新帖后的休眠秒数
 ACTIVE_HOURS = (0, 24)         # 允许爬取时段，24h 制，如 (8, 23) = 8点~23点
 INITIAL_PAGES = 1              # 首次运行回抓的历史页数（仅抓最新这么多页作种子，避免回爬全部历史）
@@ -85,6 +86,7 @@ REFRESH_SLEEP = 3.0            # 回刷翻页间隔秒数
 DAILY_REFRESH_TARGET = 5000    # 每日回刷目标帖子数
 DAILY_REFRESH_SLEEP = 3.0      # 每日回刷翻页间隔秒数
 DAILY_REFRESH_HOUR = 3         # 触发小时（凌晨 3 点）
+DAILY_REFRESH_MAX_SEC = 90 * 60  # 每日回刷最大耗时（秒），防止网络故障拖死主循环
 DB_PATH = _os.environ.get("TREEHOLE_DB_PATH", "./treehole.db")  # 数据库文件路径
 UA = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
 # ====================================================================================
@@ -287,14 +289,25 @@ def discover_new(max_seen: int, max_pages: int, conn=None) -> List[dict]:
 
 
 def fetch_comments(pid: int) -> List[dict]:
-    """抓取某帖子的全部评论，自动翻页，按时间升序返回。"""
+    """抓取某帖子的全部评论，自动翻页，按时间升序返回。
+
+    鲁棒性增强：单页请求失败时跳过该页继续下一页（不再 break 整轮），
+    最多跳过 MAX_COMMENT_PAGE_SKIP 页，连续失败过多则放弃。
+    """
     comments: List[dict] = []
     page = 1
+    skipped = 0
     while True:
         d = api_get(f"pku_comment_v3/{pid}",
                     {"page": page, "limit": COMMENT_PAGE_SIZE, "sort": "asc"})
         if not d:
-            break
+            skipped += 1
+            if skipped >= MAX_COMMENT_PAGE_SKIP:
+                print(f"  [fetch_comments] pid={pid} 连续 {skipped} 页失败，放弃", flush=True)
+                break
+            page += 1
+            continue
+        skipped = 0
         data = d["data"]
         batch = data.get("data") or []
         comments.extend(batch)
@@ -420,18 +433,42 @@ def daily_refresh(conn: sqlite3.Connection) -> None:
     翻页直到覆盖 DAILY_REFRESH_TARGET 条帖子，更新收藏量/评论数；
     评论数增长的帖子补抓新评论。
     回刷完成后，对近期未出现在列表中的帖子进行删除检测。
+
+    鲁棒性增强：
+      - 每页最多重试 2 次（api_get 自身已有 30s 硬超时）
+      - 连续 3 页失败则放弃当天刷新，回到主循环继续抓新帖（避免阻塞）
+      - 整轮设最大耗时上限 DAILY_REFRESH_MAX_SEC（默认 90 分钟），超时则跳出
     """
     pages_needed = (DAILY_REFRESH_TARGET + PAGE_SIZE - 1) // PAGE_SIZE
     updated = 0
     total_seen = 0
     seen_pids = set()
-    print(f"[daily] 开始每日回刷：翻 {pages_needed} 页，目标 {DAILY_REFRESH_TARGET} 条", flush=True)
+    consecutive_fail = 0
+    deadline = time.time() + DAILY_REFRESH_MAX_SEC
+    print(f"[daily] 开始每日回刷：翻 {pages_needed} 页，目标 {DAILY_REFRESH_TARGET} 条，"
+          f"最大耗时 {DAILY_REFRESH_MAX_SEC // 60} 分钟", flush=True)
     for page in range(1, pages_needed + 1):
-        d = api_get("pku_hole", {"page": page, "limit": PAGE_SIZE})
+        if time.time() > deadline:
+            print(f"[daily] 已达耗时上限 {DAILY_REFRESH_MAX_SEC // 60} 分钟，结束当天刷新", flush=True)
+            break
+        # 失败重试 2 次
+        d = None
+        for attempt in range(3):
+            d = api_get("pku_hole", {"page": page, "limit": PAGE_SIZE})
+            if d:
+                break
+            if attempt < 2:
+                print(f"[daily] 第 {page} 页请求失败，{2 - attempt}s 后重试", flush=True)
+                time.sleep(2)
         if not d:
-            print(f"[daily] 第 {page} 页请求失败，跳过", flush=True)
+            consecutive_fail += 1
+            print(f"[daily] 第 {page} 页连续失败 {consecutive_fail}/3", flush=True)
             time.sleep(DAILY_REFRESH_SLEEP)
+            if consecutive_fail >= 3:
+                print(f"[daily] 连续 3 页失败，放弃当天刷新，回到主循环", flush=True)
+                break
             continue
+        consecutive_fail = 0
         holes = d["data"]["data"]
         if not holes:
             print(f"[daily] 第 {page} 页无数据，结束", flush=True)
@@ -459,9 +496,12 @@ def daily_refresh(conn: sqlite3.Connection) -> None:
         if page % 10 == 0:
             print(f"[daily] 进度：已翻 {page}/{pages_needed} 页，更新 {updated} 条", flush=True)
         time.sleep(DAILY_REFRESH_SLEEP)
-    print(f"[daily] 完成：共翻 {min(page, pages_needed)} 页，更新 {updated}/{total_seen} 条帖子的元数据", flush=True)
-    # 回刷后检测被删除的帖子
-    scan_deleted_posts(conn, days=7, seen_pids=seen_pids)
+    print(f"[daily] 完成：共翻 {page - 1}/{pages_needed} 页，更新 {updated}/{total_seen} 条帖子的元数据", flush=True)
+    # 回刷后检测被删除的帖子（仅当回刷到足够页数时才执行）
+    if len(seen_pids) >= DAILY_REFRESH_TARGET // 2:
+        scan_deleted_posts(conn, days=7, seen_pids=seen_pids)
+    else:
+        print(f"[daily] 未达扫描阈值，跳过删除检测（已见 {len(seen_pids)} 条）", flush=True)
 
 
 # ------------------- 工具 -------------------
