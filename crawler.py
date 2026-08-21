@@ -546,20 +546,13 @@ def main() -> None:
           f"{'首次运行' if first_run else '增量模式'}，开始 7x24 爬取", flush=True)
 
     round_count = 0
-    last_daily_date = None  # 记录上次每日回刷的日期，确保每天只触发一次
+    # 每日回刷已拆出为独立进程 crawler_daily.py（由 treehole-daily.timer 触发），
+    # 避免在主循环内阻塞 30~90 分钟导致外部监控误报。
     while True:
         if not in_window():
             print(f"[{datetime.now():%H:%M:%S}] 非活跃时段，等待 60s", flush=True)
             time.sleep(60)
             continue
-
-        # 每日凌晨 3 点触发全量回刷最近 5000 条
-        now = datetime.now()
-        today_str = now.strftime("%Y-%m-%d")
-        if now.hour == DAILY_REFRESH_HOUR and last_daily_date != today_str:
-            print(f"[daily] {today_str} 凌晨回刷启动，更新最近 {DAILY_REFRESH_TARGET} 条帖子…", flush=True)
-            daily_refresh(conn)
-            last_daily_date = today_str
 
         round_count += 1
 

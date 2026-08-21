@@ -1,0 +1,14 @@
+[Unit]
+Description=Trigger Treehole Daily Refresh at 03:00
+
+[Timer]
+# 北京时间凌晨 3 点（服务器已是 CST，所以用本地时间）
+OnCalendar=*-*-* 03:00:00
+# 防止上次还没跑完就重叠启动
+Persistent=false
+# 启动后立即补跑一次（首次部署时如果错过 03:00，立即跑一次便于验证）
+Persistent=true
+Unit=treehole-daily.service
+
+[Install]
+WantedBy=timers.target

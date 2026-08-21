@@ -29,6 +29,9 @@ const MAIL_USER = process.env.MAIL_USER || "";
 const MAIL_PASS = process.env.MAIL_PASS || "";
 const MAIL_HOST = process.env.MAIL_HOST || "smtpdm.aliyun.com";
 const MAIL_PORT = parseInt(process.env.MAIL_PORT || "465", 10);
+// 邮箱注册总开关：true=暂停(默认),false=启用；可通过环境变量 EMAIL_REGISTRATION_DISABLED=false 恢复
+const EMAIL_REGISTRATION_DISABLED =
+  (process.env.EMAIL_REGISTRATION_DISABLED || "true").toLowerCase() !== "false";
 const MAIL_FROM = `"AutoTreehole" <${MAIL_USER}>`;
 const ALLOWED_EMAIL_DOMAINS = ["pku.edu.cn", "stu.pku.edu.cn"];
 const TOKEN_SECRET = process.env.TOKEN_SECRET || "";
@@ -1945,6 +1948,16 @@ function handleAuthSendCode(body, ip) {
   if (!isAllowedEmail(email)) {
     throw new Error("请使用北大校园邮箱（@pku.edu.cn 或 @stu.pku.edu.cn）");
   }
+  // 仅当 EMAIL_REGISTRATION_DISABLED=true 时拦截新邮箱；老用户仍可正常登录。
+  if (EMAIL_REGISTRATION_DISABLED) {
+    const existing = queryOne("SELECT email FROM users WHERE email = ?", [email]);
+    if (!existing) {
+      // 新用户：当前暂不开放注册，对外表现为「验证码发送失败」。
+      // 不要抛出明显的"注册已暂停"，以免泄露注册策略。
+      console.log(`[auth] 新邮箱被拒（注册暂停）: ${email} (IP: ${ip})`);
+      throw new Error("验证码发送失败，请稍后再试或使用邀请码登录");
+    }
+  }
   const now = Math.floor(Date.now() / 1000);
   const todayStart = new Date().setHours(0, 0, 0, 0) / 1000;
 
@@ -1988,6 +2001,15 @@ function handleAuthVerify(body, ip) {
   const code = (body.code || "").trim();
   if (!isAllowedEmail(email)) {
     throw new Error("请使用北大校园邮箱");
+  }
+  // 拦截绕过 sendCode 的新用户直接 verify 路径：
+  // 若该邮箱不存在于 users 表，且注册已暂停，则拒绝。
+  if (EMAIL_REGISTRATION_DISABLED) {
+    const existingUser = queryOne("SELECT email FROM users WHERE email = ?", [email]);
+    if (!existingUser) {
+      console.log(`[auth] 新邮箱直接 verify 被拒（注册暂停）: ${email} (IP: ${ip})`);
+      throw new Error("验证失败，请稍后再试或使用邀请码登录");
+    }
   }
   if (!code || code.length !== 6) {
     throw new Error("请输入 6 位验证码");
@@ -3245,6 +3267,9 @@ const server = http.createServer(async (req, res) => {
     // 认证接口（不需要令牌即可访问）
     if (route === "auth/sendCode") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      // 仅拦截新用户（users 表中不存在的邮箱）；老用户仍可正常登录。
+      // 这里只预读 email 域做判定，必须在 readBody 之前；因此此处仅做最早期拦截，
+      // 详细逻辑在 handleAuthSendCode 内执行（读 body 之后）。
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();

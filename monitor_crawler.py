@@ -34,6 +34,8 @@ from pathlib import Path
 # ========== 可调参数 ==========
 # 距最后一次 DB 更新多少秒视为异常（默认 30 分钟 = 1800s；可通过 MONITOR_STALE_SEC 覆盖）
 STALE_THRESHOLD_SEC = int(os.environ.get("MONITOR_STALE_SEC", "1800"))
+# 异常告警邮件推送开关：false=停止邮件推送（仍会检测异常、自动重启、写日志）
+ALERT_MAIL_ENABLED = os.environ.get("ALERT_MAIL_ENABLED", "false").lower() not in ("false", "0", "no", "off", "")
 # 报警文件（记录同一故障是否已发过邮件，避免重复刷屏）
 STATE_FILE = Path("/var/log/treehole/monitor_state.json")
 # 监控日志目录
@@ -122,7 +124,11 @@ def restart_crawler() -> bool:
 
 
 def send_email(subject: str, body_html: str) -> bool:
-    """使用阿里云 DirectMail 发送 HTML 邮件给 SITE_OWNER_EMAIL。"""
+    """使用阿里云 DirectMail 发送 HTML 邮件给 SITE_OWNER_EMAIL。
+    当 ALERT_MAIL_ENABLED=False（当前默认）时直接跳过，不发送任何邮件。"""
+    if not ALERT_MAIL_ENABLED:
+        log(f"[mail] 邮件推送已关闭，跳过: {subject}")
+        return False
     mail_user = os.environ.get("MAIL_USER", "")
     mail_pass = os.environ.get("MAIL_PASS", "")
     mail_host = os.environ.get("MAIL_HOST", "smtpdm.aliyun.com")

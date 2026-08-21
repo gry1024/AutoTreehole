@@ -1,0 +1,15 @@
+[Unit]
+Description=Treehole Daily Full Refresh
+# 与主爬虫解耦：主爬虫监控只看自己，daily 失败不应让主爬虫一起被重启
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/treehole
+ExecStart=/usr/bin/python3 /opt/treehole/crawler_daily.py
+# daily 不需要拉起 / 失败重试：下一次 timer 触发会再跑
+StandardOutput=append:/var/log/treehole/daily.log
+StandardError=append:/var/log/treehole/daily.log
+Environment=PYTHONUNBUFFERED=1
