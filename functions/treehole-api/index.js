@@ -1942,6 +1942,54 @@ ${JSON.stringify(buildMcpConfig(token), null, 2)}
   );
 }
 
+// 新用户尝试注册时通知管理员（不受 alertAdmin 的 10 分钟节流影响，每次都发）
+async function notifyNewRegistrationAttempt(email, ip, route) {
+  const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  // 1) 入库（数据后台可见，节流由 alertAdmin 自带）
+  try {
+    if (db) {
+      db.prepare(
+        "INSERT INTO alert_logs (level, type, subject, detail, ip, notified, created_at) VALUES (?,?,?,?,?,?,?)"
+      ).run(
+        "info",
+        "new_registration_attempt",
+        `新用户尝试注册被拦截: ${email}`,
+        `邮箱: ${email}\nIP: ${ip}\n入口: ${route}\n时间: ${ts}`,
+        ip,
+        0,
+        Math.floor(Date.now() / 1000)
+      );
+    }
+  } catch (e) { /* 入库失败不阻断 */ }
+  // 2) 直接发邮件给 SITE_OWNER_EMAIL（不走 alertAdmin 节流，确保每次都通知）
+  if (!SITE_OWNER_EMAIL || !MAIL_USER) {
+    console.log(`[notify] 缺少邮件配置，跳过通知: ${email}`);
+    return;
+  }
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#F5F5F7;border-radius:12px;">
+    <h2 style="color:#1D1D1F;font-size:18px;font-weight:600;margin-bottom:20px;">ℹ️ 有人尝试注册 AutoTreehole（新用户拦截）</h2>
+    <p style="color:#6E6E73;font-size:13px;line-height:1.7;margin-bottom:16px;">当前注册已暂停，有新用户输入了邮箱请求注册，请关注：</p>
+    <table style="width:100%;font-size:14px;color:#1D1D1F;line-height:1.8;margin-bottom:20px;">
+      <tr><td style="color:#86868B;width:90px;vertical-align:top;">尝试邮箱</td><td><b>${esc(email)}</b></td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">来源 IP</td><td>${esc(ip) || "未知"}</td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">触发入口</td><td>${esc(route)}</td></tr>
+      <tr><td style="color:#86868B;vertical-align:top;">时间</td><td>${ts}</td></tr>
+    </table>
+    <p style="color:#86868B;font-size:12px;margin-top:16px;">AutoTreehole · 自动通知 · 老用户和邀请码用户仍可正常登录</p>
+  </div>`;
+  try {
+    await getMailer().sendMail({
+      from: MAIL_FROM,
+      to: SITE_OWNER_EMAIL,
+      subject: `[注册暂停] 有人尝试注册: ${email}`,
+      html,
+    });
+    console.log(`[notify] 新注册尝试已通知站长: ${email}`);
+  } catch (e) {
+    console.error(`[notify] 通知站长失败: ${e.message}`);
+  }
+}
+
 // ==================== 认证 API ====================
 function handleAuthSendCode(body, ip) {
   const email = (body.email || "").trim().toLowerCase();
@@ -1955,6 +2003,10 @@ function handleAuthSendCode(body, ip) {
       // 新用户：当前暂不开放注册，对外表现为「验证码发送失败」。
       // 不要抛出明显的"注册已暂停"，以免泄露注册策略。
       console.log(`[auth] 新邮箱被拒（注册暂停）: ${email} (IP: ${ip})`);
+      // 异步通知管理员（不阻断主流程；如需立即看到错误，await 即可）
+      notifyNewRegistrationAttempt(email, ip, "auth/send-code").catch(e =>
+        console.error(`[auth] notify error: ${e.message}`)
+      );
       throw new Error("验证码发送失败，请稍后再试或使用邀请码登录");
     }
   }
@@ -2008,6 +2060,10 @@ function handleAuthVerify(body, ip) {
     const existingUser = queryOne("SELECT email FROM users WHERE email = ?", [email]);
     if (!existingUser) {
       console.log(`[auth] 新邮箱直接 verify 被拒（注册暂停）: ${email} (IP: ${ip})`);
+      // 同步发邮件通知管理员
+      notifyNewRegistrationAttempt(email, ip, "auth/verify").catch(e =>
+        console.error(`[auth] notify error: ${e.message}`)
+      );
       throw new Error("验证失败，请稍后再试或使用邀请码登录");
     }
   }
