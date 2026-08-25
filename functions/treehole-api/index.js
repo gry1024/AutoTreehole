@@ -1567,6 +1567,22 @@ function requireAuth(req) {
   return payload.email;
 }
 
+// ==================== 内部隐藏入口（/findus/）====================
+// 免登录只读预览：密钥由 nginx 在 /findus/ 路径下注入页面，随请求头回传。
+// 访客只放行只读数据接口（stats/hot/search/show/trend/周报/图片），
+// 不创建用户、不写 track 记录、不允许任何写操作（写接口仍要求登录 Cookie）。
+const GUEST_ENTRY_KEY = process.env.GUEST_ENTRY_KEY || "";
+function isGuestEntry(req) {
+  if (!GUEST_ENTRY_KEY) return false;
+  const v = (req.headers["x-guest-entry"] || "").toString();
+  if (!v || v.length !== GUEST_ENTRY_KEY.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(v), Buffer.from(GUEST_ENTRY_KEY));
+}
+/** 只读数据接口鉴权：已登录返回 email，内部访客返回 "guest"，否则 null */
+function requireAuthOrGuest(req) {
+  return requireAuth(req) || (isGuestEntry(req) ? "guest" : null);
+}
+
 // ==================== Agent 接入 ====================
 
 /** 生成 Agent API Token 明文：ath_<22位 base64url 随机> */
@@ -2296,6 +2312,8 @@ function handleAdminInviteDelete(body) {
 
 // ==================== 数据上报 API ====================
 function handleTrackView(body, req) {
+  // 内部隐藏入口（/findus/）：不记录任何浏览数据
+  if (isGuestEntry(req)) return { success: true };
   const token = getCookie(req, "treehole_token");
   const payload = verifyToken(token);
   const email = payload ? payload.email : null;
@@ -3285,7 +3303,7 @@ const server = http.createServer(async (req, res) => {
     if (route === "report/weekly") {
       if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
       await ensureDb();
-      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!requireAuthOrGuest(req)) { sendError(res, 401, "请先登录"); return; }
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       sendJson(res, 200, handleWeeklyReport(query));
       return;
@@ -3681,7 +3699,7 @@ const server = http.createServer(async (req, res) => {
     // 图片代理（用树洞 Token 抓取图片，流式返回给前端）
     if (route === "image") {
       await ensureDb();
-      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!requireAuthOrGuest(req)) { sendError(res, 401, "请先登录"); return; }
       const pid = parseInt(query.pid, 10);
       const idx = parseInt(query.idx, 10) || 0;
       if (!pid || pid < 1) { sendError(res, 400, "无效的 pid"); return; }
@@ -3715,7 +3733,8 @@ const server = http.createServer(async (req, res) => {
 
     await ensureDb();
     // 数据接口（stats/hot/search/show/trend）需登录 + 承诺，防匿名爬取帖子内容
-    if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+    // （内部隐藏入口 /findus/ 的访客密钥也可只读访问，不写任何用户数据）
+    if (!requireAuthOrGuest(req)) { sendError(res, 401, "请先登录"); return; }
 
     let result;
     switch (route) {
