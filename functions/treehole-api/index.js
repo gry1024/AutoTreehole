@@ -55,6 +55,8 @@ const MESSAGE_GLOBAL_HOURLY_LIMIT = 50; // 全局每小时最多 50 条（避免
 
 // 频率限制：每 IP 每分钟最多 30 次普通请求、5 次报告请求
 const RATE_LIMIT_NORMAL = 30;
+// 访客密钥请求（内部隐藏入口）：共享桶每分钟 120 次（内部多人共用）
+const RATE_LIMIT_GUEST = 120;
 const RATE_LIMIT_REPORT = 5;
 const RATE_WINDOW_MS = 60_000;
 // 全局报告频率：所有用户合计每分钟最多 30 次、每天最多 500 次（防止分布式滥用 MiniMax Key）
@@ -221,14 +223,18 @@ setInterval(() => {
   }
 }, 3600_000);
 
-function rateLimit(ip, isReport) {
+function rateLimit(ip, isReport, isGuest = false) {
   const now = Date.now();
-  let bucket = rateBuckets.get(ip);
-  if (!bucket) { bucket = { normal: [], report: [], reportDay: [] }; rateBuckets.set(ip, bucket); }
+  // 访客密钥请求（内部隐藏入口 /findus/）：多人可能共享同一出口 IP，
+  // 使用独立共享桶 + 更高限额，避免误伤内部用户
+  const bucketKey = isGuest ? "__guest_entry__" : ip;
+  const normalLimit = isGuest ? RATE_LIMIT_GUEST : RATE_LIMIT_NORMAL;
+  let bucket = rateBuckets.get(bucketKey);
+  if (!bucket) { bucket = { normal: [], report: [], reportDay: [] }; rateBuckets.set(bucketKey, bucket); }
   // 普通请求：每 IP 每分钟 N 次
   if (!isReport) {
     bucket.normal = bucket.normal.filter((t) => now - t < RATE_WINDOW_MS);
-    if (bucket.normal.length >= RATE_LIMIT_NORMAL) return false;
+    if (bucket.normal.length >= normalLimit) return false;
     bucket.normal.push(now);
     return true;
   }
@@ -3215,9 +3221,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 服务状态（含 token 剩余天数，用于前端提示；需登录防泄露服务器内部状态）
+    // 内部隐藏入口 /findus/ 的访客密钥也可访问（前端需展示一致的 UI）
     if (route === "status") {
       await ensureDb();
-      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!requireAuthOrGuest(req)) { sendError(res, 401, "请先登录"); return; }
       const days = tokenDaysLeft(PKU_TOKEN);
       sendJson(res, 200, {
         status: "ok",
@@ -3304,7 +3311,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
       await ensureDb();
       if (!requireAuthOrGuest(req)) { sendError(res, 401, "请先登录"); return; }
-      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      if (!rateLimit(ip, false, isGuestEntry(req))) { sendError(res, 429, "请求过于频繁"); return; }
       sendJson(res, 200, handleWeeklyReport(query));
       return;
     }
@@ -3313,7 +3320,7 @@ const server = http.createServer(async (req, res) => {
     if (route === "weekly-report/status") {
       if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
       await ensureDb();
-      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      if (!rateLimit(ip, false, isGuestEntry(req))) { sendError(res, 429, "请求过于频繁"); return; }
       sendJson(res, 200, handleWeeklyReportSubStatus(req));
       return;
     }
@@ -3685,13 +3692,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 普通接口频率限制
-    if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁，每 IP 每分钟限 30 次"); return; }
+    // 普通接口频率限制（访客密钥请求走独立共享桶，限额更高）
+    if (!rateLimit(ip, false, isGuestEntry(req))) { sendError(res, 429, "请求过于频繁，每 IP 每分钟限 30 次"); return; }
 
     // providers 等轻量接口不需要加载数据库，优先快速响应
+    // 内部隐藏入口 /findus/ 的访客密钥也可访问（前端需展示一致的模型列表）
     if (route === "providers") {
       await ensureDb();
-      if (!requireAuth(req)) { sendError(res, 401, "请先登录"); return; }
+      if (!requireAuthOrGuest(req)) { sendError(res, 401, "请先登录"); return; }
       sendJson(res, 200, handleProviders());
       return;
     }

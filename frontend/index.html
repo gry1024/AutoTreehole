@@ -2538,7 +2538,9 @@ async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
       catch(e){ throw new Error('响应解析失败（HTTP ' + resp.status + '）'); }
       if(!resp.ok){
         // 401：登录态失效（token 过期/未登录），刷新页面回到登录入口
-        if(resp.status === 401 && !path.startsWith('/auth/')){
+        // 访客模式（/findus/）下 401 是预期行为（写接口需登录），直接抛错、绝不刷新页面，
+        // 否则会陷入"401 → reload → 再 401"的死循环，并打爆限流
+        if(resp.status === 401 && !path.startsWith('/auth/') && !GUEST_MODE){
           if(!window.__authReloading){ window.__authReloading = true; location.reload(); }
           throw new Error('登录已失效，正在刷新…');
         }
@@ -2546,6 +2548,13 @@ async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
         const err = new Error(msg);
         // 透传后端返回的 code（如 QUOTA），并标记不重试
         if(data && data.code){ err.code = data.code; err.noRetry = true; }
+        // 429 限流：立即失败不重试（重试只会加剧限流）；访客模式下静默
+        if(resp.status === 429){
+          err.noRetry = true;
+          if(GUEST_MODE) err.silent = true;
+        }
+        // 访客模式下的 401 标记静默（后台预加载的需登录接口失败不弹提示）
+        if(resp.status === 401 && GUEST_MODE) err.silent = true;
         throw err;
       }
       return data;
@@ -2560,6 +2569,8 @@ async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
       }
     }
   }
+  // 静默错误（访客模式的 401/429）原样抛出，保留 silent 标记供调用方抑制提示
+  if(lastErr && lastErr.silent) throw lastErr;
   throw new Error('网络请求失败：' + (lastErr && lastErr.message ? lastErr.message : '未知错误'));
 }
 
@@ -3407,6 +3418,8 @@ async function loadStats(){
     }
     document.getElementById('lastRefreshTime').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   }catch(e){
+    // 访客模式下的静默错误（401/429）不弹提示、不覆盖已有内容
+    if(e && e.silent) return;
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
       <svg viewBox="0 0 16 16" fill="currentColor" style="color:var(--danger)"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.78 5.97L9.78 8l2 2.03a.75.75 0 11-1.06 1.06L8.72 9.06l-2.03 2.03a.75.75 0 11-1.06-1.06L7.66 8l-2.03-2.03a.75.75 0 011.06-1.06L8.72 6.94l2-2.03a.75.75 0 011.06 1.06z"/></svg>
       <div>统计加载失败</div><div style="font-size:0.8rem;margin-top:4px">${esc(e.message)}</div></div>`;
@@ -3768,6 +3781,8 @@ async function loadProviders(){
     providersData = data.providers || [];
     renderProviders();
   }catch(e){
+    // 访客模式下的静默错误（401/429）不弹提示
+    if(e && e.silent) return;
     list.innerHTML = `<div style="padding:16px 0;color:var(--danger);font-size:0.867rem;font-family:var(--font-sans);font-weight:300">模型列表加载失败：${esc(e.message)}</div>`;
     flash('error', '模型列表加载失败：' + e.message);
   }
