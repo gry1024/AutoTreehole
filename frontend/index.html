@@ -2481,10 +2481,24 @@ const API_BASE = location.origin + '/api';
 
 /* ==================== 内部隐藏入口（/findus/）====================
  * 免登录只读预览：跳过登录与承诺遮罩，直接浏览首页/热帖/详情/周报。
- * 不写入任何登录态与浏览记录（不发 track 心跳），需登录的导航自动隐藏。
+ * 不写入任何登录态与浏览记录（不发 track 心跳），所有功能按钮正常显示，
+ * 但涉及写操作（收藏/订阅/MCP/AI 报告等）时会提示需登录。
  * 密钥占位符由 nginx 在 /findus/ 路径下注入真实值（主页面保持占位符，不可用）。 */
 const GUEST_ENTRY_KEY = '__GUEST_ENTRY_KEY__';
 const GUEST_MODE = location.pathname === '/findus' || location.pathname.startsWith('/findus/');
+
+/**
+ * 访客模式检查：若当前为访客模式，弹出提示并返回 true（表示操作被拦截）。
+ * @param {string} actionName - 操作名称，用于提示文案
+ * @returns {boolean} true 表示已拦截操作（调用方应终止执行）
+ */
+function blockIfGuest(actionName){
+  if(GUEST_MODE){
+    alert(`您正在使用内部只读预览模式，"${actionName}"需要登录后才能使用。\n请访问首页完成登录。`);
+    return true;
+  }
+  return false;
+}
 
 // 状态
 let currentProvider = null;        // 当前选中：'public:<name>' 或 'custom:<id>'
@@ -2588,11 +2602,9 @@ function loadAppData(){
   if(typeof startOverviewAutoRefresh === 'function') startOverviewAutoRefresh();
   // 次优先：非首屏数据延后加载，不阻塞首屏渲染
   setTimeout(() => {
-    // 内部隐藏入口：不加载模型列表与服务器状态（均需登录）
-    if(!GUEST_MODE){
-      if(typeof loadProviders === 'function') loadProviders();
-      if(typeof checkTokenStatus === 'function') checkTokenStatus();
-    }
+    // 内部隐藏入口：模型列表与服务器状态对访客也尝试加载（API 若拒绝则静默失败）
+    if(typeof loadProviders === 'function') loadProviders();
+    if(typeof checkTokenStatus === 'function') checkTokenStatus();
     if(typeof loadWeeklyReport === 'function') loadWeeklyReport();
   }, 800);
 }
@@ -3172,6 +3184,7 @@ async function loadMcpTokens(){
     }).join('');
     body.querySelectorAll('.mcp-revoke').forEach(btn => {
       btn.addEventListener('click', async () => {
+        if(blockIfGuest('撤销 MCP Token')) return;
         if(!confirm('确定撤销这个 Token 吗？撤销后使用该 Token 的 Agent 将立即无法访问。')) return;
         try{
           await api('/agent/token/revoke', {method:'POST', body:{id:parseInt(btn.dataset.id, 10)}});
@@ -3183,6 +3196,7 @@ async function loadMcpTokens(){
 }
 
 async function createMcpToken(){
+  if(blockIfGuest('创建 MCP Token')) return;
   const label = document.getElementById('mcpTokenLabel').value.trim();
   try{
     const data = await api('/agent/token/create', {method:'POST', body:{label}});
@@ -4263,6 +4277,7 @@ function renderWeeklySubscribeBtn(){
 async function toggleWeeklySubscribe(){
   const btn = document.getElementById('weeklySubscribeBtn');
   if(!btn || btn.disabled) return;
+  if(blockIfGuest('周报邮件订阅')) return;
   if(!weeklySubState.loggedIn){
     toast('请先登录');
     return;
@@ -4340,6 +4355,7 @@ async function openWeeklyReport(weekStart, fromList){
 }
 
 async function genReport(){
+  if(blockIfGuest('生成 AI 报告')) return;
   const days = parseInt(document.getElementById('reportDays').value, 10);
   if(!days || days < 1 || days > 90){ flash('error', '天数需为 1-90 之间的整数'); return; }
   let keyword = null;
@@ -4688,6 +4704,7 @@ async function initDetailFavBtn(pid){
     }
   }catch(e){ /* 未登录时静默 */ }
   btn.addEventListener('click', async () => {
+    if(blockIfGuest('收藏帖子')) return;
     try{
       const r = await api('/favorite/toggle', {method:'POST', body:{pid}});
       if(r.favorited){
@@ -4771,6 +4788,7 @@ function initAiSummary(pid){
   let summarizing = false;
   let selectorFilled = false; // 模型选择器是否已填充过
   async function runSummary(){
+    if(blockIfGuest('AI 总结')) return;
     if(summarizing) return;
     // 仅首次填充，避免覆盖用户选择
     let hasModel;
@@ -5000,6 +5018,7 @@ function renderSubscriptions(){
 }
 
 async function addSubscription(){
+  if(blockIfGuest('关键词订阅')) return;
   const kwInput = document.getElementById('subKeywordInput');
   const notifyInput = document.getElementById('subNotifyEmail');
   const btn = document.getElementById('subAddBtn');
@@ -5025,6 +5044,7 @@ async function addSubscription(){
 }
 
 async function removeSubscription(id){
+  if(blockIfGuest('取消订阅')) return;
   if(!id) return;
   try{
     await api('/subscribe/remove', { method:'POST', body:{ id } });
@@ -5151,13 +5171,6 @@ loadFontPrefs();
 /* ==================== 初始化 ==================== */
 // 先检查访问权限，授权后才加载数据
 (async function init(){
-  // 内部隐藏入口：隐藏需要登录的功能按钮（收藏/订阅/MCP）
-  if(GUEST_MODE){
-    ['favorites', 'subscribe', 'mcp'].forEach(id => {
-      const btn = document.querySelector(`.tab-btn[data-panel="${id}"]`);
-      if(btn) btn.style.display = 'none';
-    });
-  }
   const ok = await checkAuth();
   if(ok){
     loadAppData();
