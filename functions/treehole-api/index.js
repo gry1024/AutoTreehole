@@ -3831,15 +3831,14 @@ setInterval(checkTokenAndWarn, 3600_000);
 setTimeout(() => { try { ensureDb(); scanAndNotify(); } catch (e) { console.error("[subscribe] 启动扫描失败:", e.message); } }, 60_000);
 setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscribe] 定时扫描异常:", e.message); } }, SUB_SCAN_INTERVAL_MS);
 
-// ==================== 树洞周报定时器 ====================
-// 启动后 3 分钟补跑（幂等，已存在则跳过），之后每小时检查一次，命中每周一 04:00（上海时间）则生成
-setTimeout(() => { generateWeeklyReport().catch(e => console.error("[weekly] 启动补跑失败:", e.message)); }, 180_000);
-setInterval(() => {
-  const sh = new Date(Date.now() + 8 * 3600_000); // 上海墙上时间
-  if (sh.getUTCDay() === 1 && sh.getUTCHours() === 4) {
-    generateWeeklyReport().catch(e => console.error("[weekly] 定时生成失败:", e.message));
-  }
-}, 3600_000);
+// ==================== 树洞周报定时器（已停用：网站停止更新） ====================
+// setTimeout(() => { generateWeeklyReport().catch(e => console.error("[weekly] 启动补跑失败:", e.message)); }, 180_000);
+// setInterval(() => {
+//   const sh = new Date(Date.now() + 8 * 3600_000); // 上海墙上时间
+//   if (sh.getUTCDay() === 1 && sh.getUTCHours() === 4) {
+//     generateWeeklyReport().catch(e => console.error("[weekly] 定时生成失败:", e.message));
+//   }
+// }, 3600_000);
 
 // HTTP 服务器入口：监听指定端口
 // 仅监听 127.0.0.1，公网通过 Nginx 反代访问，禁止绕过 Nginx 直连 9000
