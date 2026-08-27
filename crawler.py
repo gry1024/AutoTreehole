@@ -21,11 +21,14 @@
 3. 增量：以 max(pid) 为高水位，每轮只处理 pid>水位 的新帖；每条新帖抓取后顺带抓其评论；
    重启时从数据库恢复水位。评论按 cid 主键去重，重复抓取自动跳过。
 4. 速率：每入库一条帖子休眠 SLEEP_PER_ITEM 秒（默认 5 秒/条）；抓评论按 COMMENT_SLEEP 间隔；
-   时段由 ACTIVE_HOURS 控制。
-5. 存储：sqlite3，holes 与 comments 两表，pid/cid 主键去重，同时保留原始 JSON 便于后续扩展。
+   时段由 ACTIVE_HOURS 控制。所有 sleep 都通过 jittered() 叠加 ±JITTER 随机扰动，避免固定节律被识别。
+   ACTIVE_HOURS 默认 (7, 24)：避开 0~7 点低谷期（树洞活跃度低，异常请求更易触发风控）。
+5. 每日全量回刷在 DAILY_REFRESH_HOUR_MIN~MAX 之间随机抽时刻（每天不同时），降低固定时间窗口特征。
+6. 存储：sqlite3，holes 与 comments 两表，pid/cid 主键去重，同时保留原始 JSON 便于后续扩展。
 """
 
 import json
+import random
 import sqlite3
 import sys
 import time
@@ -73,19 +76,30 @@ SLEEP_PER_ITEM = 5.0           # 每条帖子入库后的休眠秒数（速率�
 COMMENT_SLEEP = 2.0            # 每次评论请求间隔秒数（评论分页用）
 MAX_COMMENT_PAGE_SKIP = 5      # 抓评论时最多连续跳过几页失败（防止卡死）
 ROUND_SLEEP = 60.0             # 每轮发现无新帖后的休眠秒数
-ACTIVE_HOURS = (0, 24)         # 允许爬取时段，24h 制，如 (8, 23) = 8点~23点
+ACTIVE_HOURS = (7, 24)         # 允许爬取时段，24h 制；避开凌晨 0~7 点低谷期（树洞活跃度极低，且避免深夜异常请求）
 INITIAL_PAGES = 1              # 首次运行回抓的历史页数（仅抓最新这么多页作种子，避免回爬全部历史）
 MAX_DISCOVER_PAGES = 20        # 单轮发现最多翻页数（防突发更新过多时失控）
+
+# --- 反检测：随机抖动 ---
+# 所有 sleep 在基础值上叠加 ±JITTER 比例的随机扰动，避免请求间隔呈固定周期被识别为脚本
+# 0.5 表示 sleep 在 [base*0.5, base*1.5] 之间均匀分布
+JITTER = 0.5
+def jittered(base: float) -> float:
+    """对基础秒数叠加 ±JITTER 随机扰动，最低不少于 0.5s。"""
+    span = base * JITTER
+    return max(0.5, base + random.uniform(-span, span))
 
 # --- 帖子元数据回刷（保持收藏量/评论数与线上同步）---
 REFRESH_INTERVAL = 5           # 每 N 轮触发一次浅度回刷
 REFRESH_PAGES = 10             # 浅度回刷翻页数（10 页 = 最近 ~250 条）
 REFRESH_SLEEP = 3.0            # 回刷翻页间隔秒数
 
-# --- 每日凌晨 3 点全量回刷最近 5000 条 ---
+# --- 每日全量回刷最近 5000 条 ---
 DAILY_REFRESH_TARGET = 5000    # 每日回刷目标帖子数
 DAILY_REFRESH_SLEEP = 3.0      # 每日回刷翻页间隔秒数
-DAILY_REFRESH_HOUR = 3         # 触发小时（凌晨 3 点）
+# 触发时间改为 4~6 点之间随机（每天不同时），避免固定时间窗口被识别
+DAILY_REFRESH_HOUR_MIN = 4
+DAILY_REFRESH_HOUR_MAX = 6
 DAILY_REFRESH_MAX_SEC = 90 * 60  # 每日回刷最大耗时（秒），防止网络故障拖死主循环
 DB_PATH = _os.environ.get("TREEHOLE_DB_PATH", "./treehole.db")  # 数据库文件路径
 UA = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
@@ -282,6 +296,9 @@ def discover_new(max_seen: int, max_pages: int, conn=None) -> List[dict]:
         # 当前页最旧的 pid 已 <= 水位 → 与历史重叠，无需再翻
         if holes[-1].get("pid", 0) <= max_seen:
             break
+        # 列表翻页间隔（避免连续 25 条瞬间抓完）
+        if page < max_pages:
+            time.sleep(jittered(2.5))
     fresh.sort(key=lambda h: h["pid"])
     if meta_updated:
         print(f"[discover] 顺带更新 {meta_updated} 条已有帖子的元数据", flush=True)
@@ -315,7 +332,7 @@ def fetch_comments(pid: int) -> List[dict]:
         if page >= last_page or not batch:
             break
         page += 1
-        time.sleep(COMMENT_SLEEP)
+        time.sleep(jittered(COMMENT_SLEEP))
     return comments
 
 
@@ -380,7 +397,7 @@ def scan_deleted_posts(conn: sqlite3.Connection, days: int = 7,
             conn.commit()
             deleted_count += 1
             print(f"  ✗ pid={pid} 已被删除（标记保留）", flush=True)
-        time.sleep(3)
+        time.sleep(jittered(3))
     print(f"[scan] 删除检测完成：检查 {len(to_check)} 条，标记 {deleted_count} 条已删除", flush=True)
 
 
@@ -423,7 +440,7 @@ def refresh_recent_posts(conn: sqlite3.Connection) -> None:
                 old_like = conn.execute("SELECT likenum FROM holes WHERE pid=?", (pid,)).fetchone()[0] or 0
                 if h.get("likenum", 0) != old_like:
                     print(f"  ↻ pid={pid} 收藏 {old_like}→{h.get('likenum')}", flush=True)
-        time.sleep(REFRESH_SLEEP)
+        time.sleep(jittered(REFRESH_SLEEP))
     print(f"[refresh] 回刷完成：更新 {updated} 条帖子的元数据", flush=True)
 
 
@@ -459,11 +476,11 @@ def daily_refresh(conn: sqlite3.Connection) -> None:
                 break
             if attempt < 2:
                 print(f"[daily] 第 {page} 页请求失败，{2 - attempt}s 后重试", flush=True)
-                time.sleep(2)
+                time.sleep(jittered(2))
         if not d:
             consecutive_fail += 1
             print(f"[daily] 第 {page} 页连续失败 {consecutive_fail}/3", flush=True)
-            time.sleep(DAILY_REFRESH_SLEEP)
+            time.sleep(jittered(DAILY_REFRESH_SLEEP))
             if consecutive_fail >= 3:
                 print(f"[daily] 连续 3 页失败，放弃当天刷新，回到主循环", flush=True)
                 break
@@ -495,7 +512,7 @@ def daily_refresh(conn: sqlite3.Connection) -> None:
                         print(f"  ↻ pid={pid} 评论 {old_reply}→{new_reply}，新增 {new_cmts} 条", flush=True)
         if page % 10 == 0:
             print(f"[daily] 进度：已翻 {page}/{pages_needed} 页，更新 {updated} 条", flush=True)
-        time.sleep(DAILY_REFRESH_SLEEP)
+        time.sleep(jittered(DAILY_REFRESH_SLEEP))
     print(f"[daily] 完成：共翻 {page - 1}/{pages_needed} 页，更新 {updated}/{total_seen} 条帖子的元数据", flush=True)
     # 回刷后检测被删除的帖子（仅当回刷到足够页数时才执行）
     if len(seen_pids) >= DAILY_REFRESH_TARGET // 2:
@@ -550,8 +567,8 @@ def main() -> None:
     # 避免在主循环内阻塞 30~90 分钟导致外部监控误报。
     while True:
         if not in_window():
-            print(f"[{datetime.now():%H:%M:%S}] 非活跃时段，等待 60s", flush=True)
-            time.sleep(60)
+            # 非活跃时段：休眠较长且随机，避免"每整 60s 醒来一次"的固定节律
+            time.sleep(jittered(180))
             continue
 
         round_count += 1
@@ -566,8 +583,7 @@ def main() -> None:
         new = discover_new(max_seen, pages, conn=conn)
 
         if not new:
-            print(f"[{datetime.now():%H:%M:%S}] 暂无新帖，休眠 {ROUND_SLEEP}s", flush=True)
-            time.sleep(ROUND_SLEEP)
+            time.sleep(jittered(ROUND_SLEEP))
             continue
 
         print(f"[round] 发现 {len(new)} 条新帖，开始逐条入库+抓评论（{SLEEP_PER_ITEM}s/条）", flush=True)
@@ -594,11 +610,11 @@ def main() -> None:
                         for c in cmts:
                             ct = (c.get("text") or "")[:50].replace("\n", " ")
                             print(f"     [{c.get('name')}] {ct}", flush=True)
-            time.sleep(SLEEP_PER_ITEM)
+            time.sleep(jittered(SLEEP_PER_ITEM))
 
         first_run = False
         print(f"\n[round] 本轮完成，水位 pid={max_seen}，休眠 {ROUND_SLEEP}s", flush=True)
-        time.sleep(ROUND_SLEEP)
+        time.sleep(jittered(ROUND_SLEEP))
 
 
 if __name__ == "__main__":
