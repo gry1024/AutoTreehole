@@ -2669,7 +2669,7 @@ async function checkAuth(){
       authEmail = data.email;
       authAvatarSeed = data.avatarSeed || '';
       authIsInvite = !!data.isInvite;
-      // 已登录但 passwordSet=false → 引导去注册面板（不再提"老用户"）
+      // 已登录但 passwordSet=false → 引导去注册面板
       if(!data.isInvite && data.passwordSet === false){
         document.getElementById('headerUser').classList.add('hidden');
         const ov = document.getElementById('authOverlay');
