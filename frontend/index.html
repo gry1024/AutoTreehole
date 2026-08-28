@@ -1877,6 +1877,16 @@ mark{
 .auth-card .auth-input.code-input{
   text-align:center;letter-spacing:6px;font-size:1.2rem;font-weight:500;
 }
+.auth-card .auth-code-row{
+  display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;
+}
+.auth-card .auth-code-row .auth-input{
+  width:100%;
+}
+.auth-card .auth-btn-send{
+  width:auto;padding:0 18px;height:40px;font-size:0.85rem;
+  font-weight:500;white-space:nowrap;margin-top:0;
+}
 .auth-card .auth-btn{
   width:100%;padding:11px;border-radius:var(--radius-sm);
   background:var(--btn-primary-bg);color:#fff;border:none;
@@ -1947,7 +1957,7 @@ mark{
     <!-- Tab 切换 -->
     <div class="auth-tabs">
       <button class="auth-tab active" data-mode="login">邮箱登录</button>
-      <button class="auth-tab" data-mode="register">注册 / 重新注册</button>
+      <button class="auth-tab" data-mode="register">注册</button>
     </div>
 
     <!-- 面板：邮箱登录 -->
@@ -1964,23 +1974,23 @@ mark{
       <div class="auth-error" id="loginError"></div>
       <button class="auth-btn" id="loginBtn">登录</button>
       <p class="auth-hint" style="margin-top:16px">
-        <a href="javascript:void(0)" data-switch="register">还没注册？点这里注册 / 重新注册</a>
+        <a href="javascript:void(0)" data-switch="register">还没注册？点这里注册</a>
       </p>
       <p class="auth-hint"><a href="javascript:void(0)" id="emailProblemLink">遇到问题？</a></p>
     </div>
 
-    <!-- 面板：注册 / 重新注册 -->
+    <!-- 面板：注册 -->
     <div class="auth-mode" id="modeRegister">
-      <p class="auth-sub">所有用户（老用户也请重新走一遍）</p>
+      <p class="auth-sub">使用校园邮箱注册</p>
       <div class="auth-field">
         <label>校园邮箱</label>
         <input type="email" class="auth-input" id="regEmail" placeholder="yourname@stu.pku.edu.cn" autocomplete="email">
       </div>
-      <div class="auth-field auth-row">
+      <div class="auth-field">
         <label>邮箱验证码</label>
-        <div style="display:flex;gap:8px;align-items:stretch">
-          <input type="text" class="auth-input code-input" id="regCode" placeholder="6 位数字" maxlength="6" inputmode="numeric" style="flex:1">
-          <button class="auth-btn" id="regSendCodeBtn" style="padding:0 14px;font-size:0.85rem;flex-shrink:0">发送</button>
+        <div class="auth-code-row">
+          <input type="text" class="auth-input code-input" id="regCode" placeholder="6 位数字" maxlength="6" inputmode="numeric">
+          <button class="auth-btn auth-btn-send" id="regSendCodeBtn">发送</button>
         </div>
       </div>
       <div class="auth-field">
@@ -1996,7 +2006,7 @@ mark{
         <input type="text" class="auth-input" id="regInviteCode" placeholder="请向站长索取邀请码" autocomplete="off">
       </div>
       <div class="auth-error" id="regError"></div>
-      <button class="auth-btn" id="regBtn">注册 / 重新注册</button>
+      <button class="auth-btn" id="regBtn">注册</button>
       <p class="auth-hint" style="margin-top:16px">
         <a href="javascript:void(0)" data-switch="login">已有账号？去登录</a>
       </p>
@@ -2397,7 +2407,7 @@ mark{
         <h3 class="mcp-h">第一步 · 生成 Token</h3>
         <p class="mcp-p">Token 是你的 AI 访问树洞的钥匙。每个账号最多 3 个，有效期 180 天。生成后请立即复制——明文只显示一次，丢了只能撤销重建。</p>
         <div id="mcpTokenArea">
-          <div id="mcpTokenForbid" class="mcp-forbid" style="display:none">此功能仅校园邮箱用户可用。邀请码用户如需使用，请用校园邮箱重新注册。</div>
+          <div id="mcpTokenForbid" class="mcp-forbid" style="display:none">此功能仅校园邮箱用户可用。邀请码用户如需使用，请用校园邮箱注册。</div>
           <div id="mcpTokenPanel">
             <div class="mcp-token-create">
               <input type="text" id="mcpTokenLabel" class="input" style="max-width:240px" placeholder="给 Token 起个名字，如：我的Claude" maxlength="20">
@@ -2659,8 +2669,7 @@ async function checkAuth(){
       authEmail = data.email;
       authAvatarSeed = data.avatarSeed || '';
       authIsInvite = !!data.isInvite;
-      // 2026-08-28 改造：所有用户（老用户也必须重新注册），已存在的 token 视为登录中；
-      // 但 passwordSet=false 时引导其去重新注册面板。
+      // 已登录但 passwordSet=false → 引导去注册面板（不再提"老用户"）
       if(!data.isInvite && data.passwordSet === false){
         document.getElementById('headerUser').classList.add('hidden');
         const ov = document.getElementById('authOverlay');
@@ -2669,9 +2678,9 @@ async function checkAuth(){
         const regEmail = document.getElementById('regEmail');
         if(regEmail) regEmail.value = data.email || '';
         const titleEl = document.getElementById('authTitle');
-        if(titleEl) titleEl.textContent = '请重新注册（设置密码）';
+        if(titleEl) titleEl.textContent = '请完成注册';
         const tagEl = document.querySelector('.auth-tagline');
-        if(tagEl) tagEl.textContent = '2026-08-28 起所有用户需重新注册（老用户收藏保留）';
+        if(tagEl) tagEl.textContent = '不再错过每一条有价值的树洞';
         switchAuthPanel('register');
         return false;
       }
@@ -2884,7 +2893,7 @@ async function authLogin(){
 document.getElementById('loginBtn').addEventListener('click', authLogin);
 document.getElementById('loginPassword').addEventListener('keydown', e => { if(e.key==='Enter') authLogin(); });
 
-/* ============ 注册 / 重新注册（统一端点） ============ */
+/* ============ 注册（统一端点） ============ */
 async function regSendCode(){
   const email = (document.getElementById('regEmail').value || '').trim().toLowerCase();
   authSetError('reg', '');
@@ -2919,7 +2928,7 @@ async function authRegister(){
   btn.disabled = true; btn.textContent = '注册中…';
   try{
     const data = await api('/auth/register', {method:'POST', body:{email, code, password: pw, inviteCode}});
-    // 注册 / 重新注册都自动登录
+    // 注册成功自动登录
     authAuthorized = true;
     authEmail = data.email;
     authAvatarSeed = data.avatarSeed || '';
@@ -2930,7 +2939,7 @@ async function authRegister(){
   }catch(e){
     authSetError('reg', e.message);
   }finally{
-    btn.disabled = false; btn.textContent = '注册 / 重新注册';
+    btn.disabled = false; btn.textContent = '注册';
   }
 }
 

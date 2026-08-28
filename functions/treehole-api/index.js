@@ -2232,9 +2232,9 @@ function handleAuthLogin(body, req) {
     throw new Error("账号已被封禁");
   }
   if (!user.password_hash || user.password_set_at === 0) {
-    // 2026-08-28 改造：所有用户必须重新注册才能登录
+    // 2026-08-28 改造：账号未设密码，必须走注册流程
     logPasswordAttempt(email, ip, 0);
-    throw new Error("该账号需要重新注册后才能登录（请切换到注册面板，输入邀请码后提交）");
+    throw new Error("该账号尚未注册，请切换到注册面板完成注册");
   }
 
   // 校验密码
