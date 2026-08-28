@@ -707,6 +707,21 @@ function ensureDb() {
     db.exec("ALTER TABLE agent_tokens ADD COLUMN bound_at INTEGER DEFAULT 0");
     db.exec("ALTER TABLE agent_tokens ADD COLUMN expire_at INTEGER DEFAULT 0");
   } catch (e) { /* 字段已存在则忽略 */ }
+  // 兼容已存在的表：补充密码登录相关字段（2026-08-28 密码登录改造）
+  try { db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''"); } catch (e) { /* 字段已存在则忽略 */ }
+  try { db.exec("ALTER TABLE users ADD COLUMN password_salt TEXT DEFAULT ''"); } catch (e) { /* 字段已存在则忽略 */ }
+  try { db.exec("ALTER TABLE users ADD COLUMN password_set_at INTEGER DEFAULT 0"); } catch (e) { /* 字段已存在则忽略 */ }
+  try { db.exec("ALTER TABLE users ADD COLUMN avatar_seed TEXT DEFAULT ''"); } catch (e) { /* 字段已存在则忽略 */ }
+  // 密码尝试表（防爆破）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS password_attempts (
+      email        TEXT NOT NULL,
+      ip           TEXT DEFAULT '',
+      attempted_at INTEGER NOT NULL,
+      success      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pwd_attempts_email ON password_attempts(email, attempted_at);
+  `);
   console.log("[db] 数据库已连接（可写模式）:", DB_PATH);
   return db;
 }
@@ -2013,25 +2028,16 @@ async function notifyNewRegistrationAttempt(email, ip, route) {
 }
 
 // ==================== 认证 API ====================
+// 写死的邀请码（2026-08-28 改造后唯一注册凭证）
+const REGISTER_INVITE_CODE = "pkuhub_autotreehole_fuck";
+
 function handleAuthSendCode(body, ip) {
   const email = (body.email || "").trim().toLowerCase();
   if (!isAllowedEmail(email)) {
     throw new Error("请使用北大校园邮箱（@pku.edu.cn 或 @stu.pku.edu.cn）");
   }
-  // 仅当 EMAIL_REGISTRATION_DISABLED=true 时拦截新邮箱；老用户仍可正常登录。
-  if (EMAIL_REGISTRATION_DISABLED) {
-    const existing = queryOne("SELECT email FROM users WHERE email = ?", [email]);
-    if (!existing) {
-      // 新用户：当前暂不开放注册，对外表现为「验证码发送失败」。
-      // 不要抛出明显的"注册已暂停"，以免泄露注册策略。
-      console.log(`[auth] 新邮箱被拒（注册暂停）: ${email} (IP: ${ip})`);
-      // 异步通知管理员（不阻断主流程；如需立即看到错误，await 即可）
-      notifyNewRegistrationAttempt(email, ip, "auth/send-code").catch(e =>
-        console.error(`[auth] notify error: ${e.message}`)
-      );
-      throw new Error("验证码发送失败，请稍后再试或使用邀请码登录");
-    }
-  }
+  // 2026-08-28 改造：新邮箱允许直接注册（任何 @pku 邮箱 + 正确邀请码即可）
+  // EMAIL_REGISTRATION_DISABLED 不再用于拦截 sendCode，但保留作为站长紧急关停开关。
   const now = Math.floor(Date.now() / 1000);
   const todayStart = new Date().setHours(0, 0, 0, 0) / 1000;
 
@@ -2076,19 +2082,7 @@ function handleAuthVerify(body, ip) {
   if (!isAllowedEmail(email)) {
     throw new Error("请使用北大校园邮箱");
   }
-  // 拦截绕过 sendCode 的新用户直接 verify 路径：
-  // 若该邮箱不存在于 users 表，且注册已暂停，则拒绝。
-  if (EMAIL_REGISTRATION_DISABLED) {
-    const existingUser = queryOne("SELECT email FROM users WHERE email = ?", [email]);
-    if (!existingUser) {
-      console.log(`[auth] 新邮箱直接 verify 被拒（注册暂停）: ${email} (IP: ${ip})`);
-      // 同步发邮件通知管理员
-      notifyNewRegistrationAttempt(email, ip, "auth/verify").catch(e =>
-        console.error(`[auth] notify error: ${e.message}`)
-      );
-      throw new Error("验证失败，请稍后再试或使用邀请码登录");
-    }
-  }
+  // 2026-08-28 改造：新邮箱直接通过（不再拦截）；老路径保留供向后兼容（前端不再调用）
   if (!code || code.length !== 6) {
     throw new Error("请输入 6 位验证码");
   }
@@ -2136,11 +2130,278 @@ function handleAuthCheck(req) {
   if (!payload) {
     return { authorized: false };
   }
-  const user = queryOne("SELECT pledged, banned FROM users WHERE email = ?", [payload.email]);
+  const user = queryOne(
+    "SELECT pledged, banned, password_set_at, avatar_seed FROM users WHERE email = ?",
+    [payload.email]
+  );
   if (user && user.banned) {
     return { authorized: false, banned: true };
   }
-  return { authorized: true, email: payload.email, pledged: user ? !!user.pledged : false };
+  const isInvite = !!payload.email && payload.email.startsWith("invite:");
+  return {
+    authorized: true,
+    email: payload.email,
+    pledged: user ? !!user.pledged : false,
+    isInvite,
+    passwordSet: isInvite ? false : (user ? user.password_set_at > 0 : false),
+    avatarSeed: user ? (user.avatar_seed || "") : ""
+  };
+}
+
+// ============ 密码登录（2026-08-28 改造）============
+// 工具：bcrypt 加载（避免启动时就加载，仅在调用时 require）
+let _bcrypt = null;
+function getBcrypt() {
+  if (!_bcrypt) {
+    try { _bcrypt = require("bcrypt"); }
+    catch (e) { throw new Error("后端 bcrypt 模块未安装，请先在 functions/treehole-api/ 目录下执行 npm install"); }
+  }
+  return _bcrypt;
+}
+
+// 工具：生成 avatar_seed（基于 email hash）
+function makeAvatarSeed(email) {
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(String(email).toLowerCase()).digest("hex").slice(0, 16);
+}
+
+// 工具：检查 email 锁定（5 次/15 分钟）
+function isEmailLocked(email) {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - 15 * 60;
+  const failCount = queryOne(
+    "SELECT COUNT(*) as c FROM password_attempts WHERE email = ? AND attempted_at >= ? AND success = 0",
+    [email, windowStart]
+  )?.c || 0;
+  return failCount >= 5;
+}
+
+// 工具：检查 IP 锁定（20 次/15 分钟）
+function isIpLocked(ip) {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - 15 * 60;
+  const failCount = queryOne(
+    "SELECT COUNT(*) as c FROM password_attempts WHERE ip = ? AND attempted_at >= ? AND success = 0",
+    [ip, windowStart]
+  )?.c || 0;
+  return failCount >= 20;
+}
+
+// 工具：记录密码尝试
+function logPasswordAttempt(email, ip, success) {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    "INSERT INTO password_attempts (email, ip, attempted_at, success) VALUES (?, ?, ?, ?)"
+  ).run(email, ip || "", now, success ? 1 : 0);
+}
+
+// POST /auth/login  邮箱+密码登录
+function handleAuthLogin(body, req) {
+  const ip = getClientIp(req);
+  const email = (body.email || "").trim().toLowerCase();
+  const password = String(body.password || "");
+
+  if (!isAllowedEmail(email)) {
+    throw new Error("请使用北大校园邮箱");
+  }
+  if (!password) {
+    throw new Error("请输入密码");
+  }
+
+  // 锁定检查
+  if (isEmailLocked(email)) {
+    logPasswordAttempt(email, ip, 0);
+    alertAdmin("warn", "brute_force", "密码登录触发锁定", `邮箱: ${email}（15 分钟内 5+ 次失败）`, ip);
+    throw new Error("尝试次数过多，请 15 分钟后再试");
+  }
+  if (isIpLocked(ip)) {
+    logPasswordAttempt(email, ip, 0);
+    throw new Error("IP 登录尝试过于频繁，请稍后再试");
+  }
+
+  // 查用户
+  const user = queryOne(
+    "SELECT email, password_hash, password_set_at, avatar_seed, banned FROM users WHERE email = ?",
+    [email]
+  );
+  if (!user) {
+    logPasswordAttempt(email, ip, 0);
+    throw new Error("账号或密码错误");
+  }
+  if (user.banned) {
+    throw new Error("账号已被封禁");
+  }
+  if (!user.password_hash || user.password_set_at === 0) {
+    // 老用户还没设密码
+    logPasswordAttempt(email, ip, 0);
+    throw new Error("请先设置密码");
+  }
+
+  // 校验密码
+  let ok = false;
+  try {
+    ok = getBcrypt().compareSync(password, user.password_hash);
+  } catch (e) {
+    console.error(`[auth] bcrypt error: ${e.message}`);
+    throw new Error("登录失败，请稍后再试");
+  }
+
+  if (!ok) {
+    logPasswordAttempt(email, ip, 0);
+    if ((queryOne(
+      "SELECT COUNT(*) as c FROM password_attempts WHERE email = ? AND attempted_at >= ? AND success = 0",
+      [email, Math.floor(Date.now() / 1000) - 15 * 60]
+    )?.c || 0) + 1 >= 5) {
+      alertAdmin("warn", "brute_force", "密码登录失败累计达锁定阈值", `邮箱: ${email}`, ip);
+    }
+    throw new Error("账号或密码错误");
+  }
+
+  // 成功
+  logPasswordAttempt(email, ip, 1);
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare("UPDATE users SET last_visit = ?, visit_count = visit_count + 1 WHERE email = ?").run(now, email);
+  const token = generateToken(email);
+  return {
+    success: true,
+    token,
+    email,
+    isInvite: false,
+    avatarSeed: user.avatar_seed || makeAvatarSeed(email),
+    message: "登录成功"
+  };
+}
+
+// GET /auth/need-set-password?email=xxx  判断 email 是否已设密码
+function handleAuthNeedSetPassword(req, email) {
+  email = (email || "").trim().toLowerCase();
+  if (!email) throw new Error("缺少 email 参数");
+  if (email.startsWith("invite:")) {
+    return { exists: true, passwordSet: false, isInvite: true, email };
+  }
+  const user = queryOne(
+    "SELECT email, password_set_at FROM users WHERE email = ?",
+    [email]
+  );
+  if (!user) return { exists: false, email };
+  return { exists: true, passwordSet: user.password_set_at > 0, email };
+}
+
+// POST /auth/register  注册新账号 / 老用户重新注册（统一端点）
+// 校验邀请码 + 邮箱验证码 + 设置密码，签发 token 自动登录。
+function handleAuthRegister(body, ip) {
+  const email = (body.email || "").trim().toLowerCase();
+  const code = (body.code || "").trim();
+  const password = String(body.password || "");
+  const inviteCode = String(body.inviteCode || "").trim();
+
+  // 1) 邀请码校验（写死唯一字符串，区分大小写）
+  if (inviteCode !== REGISTER_INVITE_CODE) {
+    console.log(`[auth] 邀请码错误: ${email} (IP: ${ip})`);
+    alertAdmin("warn", "brute_force", "注册邀请码错误", `邮箱: ${email}（邀请码不正确）`, ip);
+    throw new Error("邀请码不正确");
+  }
+
+  // 2) 邮箱格式
+  if (!isAllowedEmail(email)) {
+    throw new Error("请使用北大校园邮箱（@pku.edu.cn 或 @stu.pku.edu.cn）");
+  }
+
+  // 3) 验证码格式
+  if (!code || code.length !== 6) {
+    throw new Error("请输入 6 位验证码");
+  }
+
+  // 4) 密码强度
+  if (!password || password.length < 8) {
+    throw new Error("密码至少 8 位");
+  }
+  if (password.length > 128) {
+    throw new Error("密码过长（限 128 位）");
+  }
+
+  // 5) 校验邮箱验证码
+  const now = Math.floor(Date.now() / 1000);
+  const record = queryOne("SELECT * FROM verify_codes WHERE email = ?", [email]);
+  if (!record) {
+    throw new Error("请先发送验证码");
+  }
+  if (record.attempts >= CODE_MAX_ATTEMPTS) {
+    alertAdmin("warn", "brute_force", "注册验证码尝试次数耗尽", `邮箱: ${email}`, ip);
+    throw new Error("尝试次数过多，请重新发送验证码");
+  }
+  if (now > record.expires_at) {
+    throw new Error("验证码已过期，请重新发送");
+  }
+  if (record.code !== code) {
+    db.prepare("UPDATE verify_codes SET attempts = attempts + 1 WHERE email = ?").run(email);
+    throw new Error("验证码错误");
+  }
+
+  // 6) 老用户判定（保留 favorites / subscriptions / messages 等历史数据）
+  const existingUser = queryOne("SELECT email, password_set_at FROM users WHERE email = ?", [email]);
+  const isReturningUser = !!existingUser;
+
+  // 7) 生成 bcrypt 哈希 + avatar seed
+  const hash = getBcrypt().hashSync(password, 12);
+  const seed = makeAvatarSeed(email);
+
+  // 8) 写入 users（新用户 INSERT，老用户 UPDATE）
+  if (isReturningUser) {
+    db.prepare(
+      "UPDATE users SET password_hash = ?, password_salt = '', password_set_at = ?, avatar_seed = ?, last_visit = ?, visit_count = visit_count + 1 WHERE email = ?"
+    ).run(hash, now, now, seed, now, email);
+    console.log(`[auth] 老用户重新注册成功: ${email}`);
+  } else {
+    db.prepare(
+      `INSERT INTO users (email, verified_at, last_visit, visit_count, password_hash, password_salt, password_set_at, avatar_seed, pledged)
+       VALUES (?, ?, ?, 1, ?, '', ?, ?, 0)`
+    ).run(email, now, now, hash, now, seed);
+    console.log(`[auth] 新用户注册成功: ${email}`);
+  }
+
+  // 9) 清除验证码 + 写访问日志
+  db.prepare("DELETE FROM verify_codes WHERE email = ?").run(email);
+  db.prepare("INSERT INTO visit_logs (user_email, ip, entered_at, last_active) VALUES (?, ?, ?, ?)").run(email, ip, now, now);
+
+  // 10) 签发 token 自动登录
+  const token = generateToken(email);
+  return {
+    success: true,
+    email,
+    isInvite: false,
+    avatarSeed: seed,
+    autoLogin: true,
+    token,
+    isReturningUser,
+    message: isReturningUser ? "注册成功，欢迎回来" : "注册成功，已自动登录"
+  };
+}
+
+// 兼容老路径 /auth/set-password：行为与 /auth/register 一致（已废弃，前端不再使用）
+function handleAuthSetPassword(body, ip) {
+  return handleAuthRegister(body, ip);
+}
+
+// GET /auth/me  当前用户信息
+function handleAuthMe(req) {
+  const token = getCookie(req, "treehole_token");
+  const payload = verifyToken(token);
+  if (!payload) throw new Error("未登录");
+  const email = payload.email;
+  const user = queryOne(
+    "SELECT email, avatar_seed, password_set_at, last_visit FROM users WHERE email = ?",
+    [email]
+  );
+  if (!user) throw new Error("用户不存在");
+  const isInvite = email.startsWith("invite:");
+  return {
+    email,
+    isInvite,
+    avatarSeed: isInvite ? makeAvatarSeed(email) : (user.avatar_seed || makeAvatarSeed(email)),
+    passwordSet: isInvite ? false : (user.password_set_at > 0),
+    lastVisit: user.last_visit || 0
+  };
 }
 
 // 用户承诺（不传播本站）
@@ -3394,15 +3655,75 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (route === "auth/invite") {
+      // 2026-08-28 改造：邀请码登录通道完全关闭（仅保留注册时的写死邀请码）
+      sendError(res, 404, "邀请码登录已关闭，请使用校园邮箱注册");
+      return;
+    }
+    if (route === "auth/login") {
       if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
       if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
       const body = JSON.parse((await readBody(req)) || "{}");
       await ensureDb();
       try {
-        const result = handleInviteLogin(body, req);
+        const result = handleAuthLogin(body, req);
+        if (result.token) {
+          res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Secure; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
+        }
+        sendJson(res, 200, result);
+      } catch (e) {
+        // 锁定返回 429，其余 400
+        const code = e.message && e.message.includes("过于频繁") ? 429 : 400;
+        sendError(res, code, e.message);
+      }
+      return;
+    }
+    if (route === "auth/register") {
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        const result = handleAuthRegister(body, ip);
+        // 注册成功自动登录
         res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Secure; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
         sendJson(res, 200, result);
+      } catch (e) {
+        // 邀请码错误不抛 4xx 误导，统一 400
+        sendError(res, 400, e.message);
+      }
+      return;
+    }
+    if (route === "auth/set-password") {
+      // 兼容老路径（2026-08-28 后已废弃，前端不再调用，但保留路由避免外部脚本 404）
+      if (req.method !== "POST") { sendError(res, 405, "Method Not Allowed"); return; }
+      if (!rateLimit(ip, false)) { sendError(res, 429, "请求过于频繁"); return; }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await ensureDb();
+      try {
+        const result = handleAuthSetPassword(body, ip);
+        if (result.token) {
+          res.setHeader("Set-Cookie", `treehole_token=${result.token}; HttpOnly; Secure; Path=/; Max-Age=${TOKEN_MAX_AGE}; SameSite=Lax`);
+        }
+        sendJson(res, 200, result);
       } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "auth/need-set-password") {
+      if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      try {
+        const url = new URL(req.url, "http://localhost");
+        const email = url.searchParams.get("email") || "";
+        sendJson(res, 200, handleAuthNeedSetPassword(req, email));
+      } catch (e) { sendError(res, 400, e.message); }
+      return;
+    }
+    if (route === "auth/me") {
+      if (req.method !== "GET") { sendError(res, 405, "Method Not Allowed"); return; }
+      await ensureDb();
+      try {
+        sendJson(res, 200, handleAuthMe(req));
+      } catch (e) { sendError(res, 401, e.message); }
       return;
     }
     if (route === "message") {

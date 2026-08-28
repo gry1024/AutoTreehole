@@ -118,6 +118,33 @@ input,select,textarea{font-family:var(--font-sans);color:inherit}
   align-items:center;color:var(--fg-secondary);transition:color .2s;vertical-align:middle;
   margin-left:8px;border-radius:var(--radius-sm)}
 .font-settings-btn:hover{color:var(--fg)}
+/* ==================== 用户头像 ==================== */
+.header-user{position:relative;margin-left:8px;display:inline-block}
+.avatar-btn{background:none;border:2px solid transparent;cursor:pointer;padding:0;width:36px;height:36px;
+  border-radius:50%;overflow:hidden;transition:border-color .2s,transform .2s;display:inline-flex;
+  align-items:center;justify-content:center}
+.avatar-btn:hover{border-color:var(--accent);transform:scale(1.05)}
+.avatar-btn:focus-visible{outline:none;border-color:var(--accent)}
+.avatar-svg{display:block;width:100%;height:100%;border-radius:50%;overflow:hidden}
+.avatar-svg svg{display:block;width:100%;height:100%}
+.avatar-shapes > *{animation:avatarFloat 12s ease-in-out infinite alternate;transform-origin:center}
+.avatar-shapes > *:nth-child(2){animation-duration:16s;animation-delay:-3s}
+.avatar-shapes > *:nth-child(3){animation-duration:14s;animation-delay:-6s}
+.avatar-shapes > *:nth-child(4){animation-duration:18s;animation-delay:-9s}
+@keyframes avatarFloat{0%{transform:translate(0,0) rotate(0deg) scale(1)}100%{transform:translate(3px,-3px) rotate(45deg) scale(1.1)}}
+.user-menu{position:absolute;top:calc(100% + 10px);right:0;min-width:240px;background:var(--bg-elevated);
+  border:1px solid var(--divider-subtle);border-radius:var(--radius);box-shadow:0 6px 28px rgba(0,0,0,0.12);
+  padding:8px;z-index:600}
+.user-info{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.user-avatar-mini{width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;display:inline-block}
+.user-info-text{flex:1;min-width:0}
+.user-email{font-size:0.9rem;color:var(--fg);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-meta{font-size:0.75rem;color:var(--fg-tertiary);margin-top:2px}
+.user-menu-sep{border:none;border-top:1px solid var(--divider-subtle);margin:4px 0}
+.menu-item{width:100%;display:flex;align-items:center;gap:10px;padding:9px 12px;background:none;border:none;
+  cursor:pointer;border-radius:var(--radius-sm);font-size:0.875rem;color:var(--fg-secondary);transition:background .15s,color .15s;font-family:inherit}
+.menu-item:hover{background:var(--bg-hover);color:var(--fg)}
+.menu-item svg{color:var(--fg-tertiary)}
 .font-settings-popover{position:fixed;top:60px;right:24px;background:var(--bg-elevated);
   border:1px solid var(--divider-subtle);border-radius:var(--radius);padding:20px;z-index:500;
   box-shadow:0 4px 24px rgba(0,0,0,0.08);min-width:260px;display:none}
@@ -1897,76 +1924,82 @@ mark{
 <div class="auth-overlay" id="authOverlay">
   <div class="auth-card">
     <svg class="auth-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <!-- 袋鼠头部 -->
       <ellipse cx="24" cy="20" rx="11" ry="12" fill="#C8A9A9"/>
-      <!-- 耳朵 -->
       <ellipse cx="15" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(-20 15 10)"/>
       <ellipse cx="33" cy="10" rx="4" ry="6" fill="#B89898" transform="rotate(20 33 10)"/>
       <ellipse cx="15" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(-20 15 11)"/>
       <ellipse cx="33" cy="11" rx="2" ry="3.5" fill="#D8B8B8" transform="rotate(20 33 11)"/>
-      <!-- 眼睛 -->
       <circle cx="20" cy="18" r="1.8" fill="#1D1D1F"/>
       <circle cx="28" cy="18" r="1.8" fill="#1D1D1F"/>
       <circle cx="20.5" cy="17.5" r="0.6" fill="#fff"/>
       <circle cx="28.5" cy="17.5" r="0.6" fill="#fff"/>
-      <!-- 鼻子 -->
       <ellipse cx="24" cy="24" rx="2.2" ry="1.5" fill="#1D1D1F"/>
-      <!-- 嘴巴（微笑）-->
       <path d="M22 26.5 Q24 28 26 26.5" stroke="#1D1D1F" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-      <!-- 腮红 -->
       <circle cx="16" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
       <circle cx="32" cy="23" r="2" fill="#E8C8C8" opacity="0.6"/>
-      <!-- 身体上半身 -->
       <ellipse cx="24" cy="40" rx="14" ry="10" fill="#C8A9A9"/>
-      <!-- 小爪子 -->
       <ellipse cx="16" cy="42" rx="3" ry="4" fill="#B89898"/>
       <ellipse cx="32" cy="42" rx="3" ry="4" fill="#B89898"/>
     </svg>
     <h2 id="authTitle">AutoTreehole</h2>
     <p class="auth-tagline">不再错过每一条有价值的树洞</p>
 
-    <!-- 切换 Tab -->
+    <!-- Tab 切换 -->
     <div class="auth-tabs">
-      <button class="auth-tab active" data-mode="email">校园邮箱</button>
-      <button class="auth-tab" data-mode="invite">邀请码</button>
+      <button class="auth-tab active" data-mode="login">邮箱登录</button>
+      <button class="auth-tab" data-mode="register">注册 / 重新注册</button>
     </div>
 
-    <!-- 邮箱验证模式 -->
-    <div class="auth-mode active" id="modeEmail">
-      <!-- 步骤1：输入邮箱 -->
-      <div id="authStep1">
-        <div class="auth-field">
-          <label>校园邮箱</label>
-          <input type="email" class="auth-input" id="authEmail" placeholder="yourname@stu.pku.edu.cn" autocomplete="email">
-        </div>
-        <div class="auth-error" id="authError1"></div>
-        <button class="auth-btn" id="authSendBtn">发送验证码</button>
-        <p class="auth-hint">支持 @pku.edu.cn 和 @stu.pku.edu.cn 邮箱</p>
+    <!-- 面板：邮箱登录 -->
+    <div class="auth-mode active" id="modeLogin">
+      <p class="auth-sub">使用校园邮箱登录（限 @pku.edu.cn / @stu.pku.edu.cn）</p>
+      <div class="auth-field">
+        <label>校园邮箱</label>
+        <input type="email" class="auth-input" id="loginEmail" placeholder="yourname@stu.pku.edu.cn" autocomplete="email">
       </div>
-      <!-- 步骤2：输入验证码 -->
-      <div id="authStep2" style="display:none">
-        <div class="auth-field">
-          <label>验证码（6位数字）</label>
-          <input type="text" class="auth-input code-input" id="authCode" placeholder="000000" maxlength="6" inputmode="numeric">
-        </div>
-        <div class="auth-error" id="authError2"></div>
-        <button class="auth-btn" id="authVerifyBtn">验证</button>
-        <span class="auth-resend" id="authResend">重新发送验证码</span>
-        <p class="auth-hint" id="authEmailHint"></p>
+      <div class="auth-field">
+        <label>密码</label>
+        <input type="password" class="auth-input" id="loginPassword" placeholder="≥ 8 位" autocomplete="current-password">
       </div>
-      <p class="auth-hint" style="margin-top:20px"><a href="javascript:void(0)" id="emailProblemLink">遇到问题？</a></p>
+      <div class="auth-error" id="loginError"></div>
+      <button class="auth-btn" id="loginBtn">登录</button>
+      <p class="auth-hint" style="margin-top:16px">
+        <a href="javascript:void(0)" data-switch="register">还没注册？点这里注册 / 重新注册</a>
+      </p>
+      <p class="auth-hint"><a href="javascript:void(0)" id="emailProblemLink">遇到问题？</a></p>
     </div>
 
-    <!-- 邀请码模式 -->
-    <div class="auth-mode" id="modeInvite">
-      <p class="auth-sub">持有邀请码？直接输入即可进入</p>
+    <!-- 面板：注册 / 重新注册 -->
+    <div class="auth-mode" id="modeRegister">
+      <p class="auth-sub">所有用户（老用户也请重新走一遍）</p>
+      <div class="auth-field">
+        <label>校园邮箱</label>
+        <input type="email" class="auth-input" id="regEmail" placeholder="yourname@stu.pku.edu.cn" autocomplete="email">
+      </div>
+      <div class="auth-field auth-row">
+        <label>邮箱验证码</label>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <input type="text" class="auth-input code-input" id="regCode" placeholder="6 位数字" maxlength="6" inputmode="numeric" style="flex:1">
+          <button class="auth-btn" id="regSendCodeBtn" style="padding:0 14px;font-size:0.85rem;flex-shrink:0">发送</button>
+        </div>
+      </div>
+      <div class="auth-field">
+        <label>设置密码（≥ 8 位）</label>
+        <input type="password" class="auth-input" id="regPassword" placeholder="至少 8 位" autocomplete="new-password">
+      </div>
+      <div class="auth-field">
+        <label>确认密码</label>
+        <input type="password" class="auth-input" id="regPassword2" placeholder="再输入一次" autocomplete="new-password">
+      </div>
       <div class="auth-field">
         <label>邀请码</label>
-        <input type="text" class="auth-input" id="inviteCode" placeholder="ABCDEFGH" maxlength="20" style="text-transform:uppercase" autocomplete="off">
+        <input type="text" class="auth-input" id="regInviteCode" placeholder="请向站长索取邀请码" autocomplete="off">
       </div>
-      <div class="auth-error" id="inviteError"></div>
-      <button class="auth-btn" id="inviteBtn">进入</button>
-      <p class="auth-hint"><a href="javascript:void(0)" id="getInviteCodeLink">获取邀请码</a></p>
+      <div class="auth-error" id="regError"></div>
+      <button class="auth-btn" id="regBtn">注册 / 重新注册</button>
+      <p class="auth-hint" style="margin-top:16px">
+        <a href="javascript:void(0)" data-switch="login">已有账号？去登录</a>
+      </p>
     </div>
   </div>
 </div>
@@ -2068,6 +2101,31 @@ mark{
       <button class="font-settings-btn" id="fontSettingsBtn" title="显示设置">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
+
+      <!-- 用户头像（已登录时显示） -->
+      <div class="header-user hidden" id="headerUser">
+        <button class="avatar-btn" id="avatarBtn" aria-label="账户菜单" aria-haspopup="true">
+          <span class="avatar-svg" id="avatarSvg" aria-hidden="true"></span>
+        </button>
+        <div class="user-menu" id="userMenu" role="menu" hidden>
+          <div class="user-info">
+            <span class="user-avatar-mini" id="userAvatarMini"></span>
+            <div class="user-info-text">
+              <div class="user-email" id="userEmail">—</div>
+              <div class="user-meta" id="userMeta">—</div>
+            </div>
+          </div>
+          <hr class="user-menu-sep">
+          <button class="menu-item" data-action="logout" role="menuitem">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            <span>退出登录</span>
+          </button>
+        </div>
+      </div>
     </nav>
   </div>
 </header>
@@ -2479,13 +2537,15 @@ mark{
 // API 基础路径 — 同源部署下指向 /api，本地调试可改为你自己的后端地址
 const API_BASE = location.origin + '/api';
 
-/* ==================== 内部隐藏入口（/findus/）====================
+/* ==================== 内部隐藏入口（/findus/ 与 /findme/）====================
  * 免登录只读预览：跳过登录与承诺遮罩，直接浏览首页/热帖/详情/周报。
  * 不写入任何登录态与浏览记录（不发 track 心跳），所有功能按钮正常显示，
  * 但涉及写操作（收藏/订阅/MCP/AI 报告等）时会提示需登录。
- * 密钥占位符由 nginx 在 /findus/ 路径下注入真实值（主页面保持占位符，不可用）。 */
+ * /findme/ 必须登录（邮箱+密码 / 邀请码），不再算访客模式。
+ * 密钥占位符由 nginx 在 /findus/ 路径下注入真实值。 */
 const GUEST_ENTRY_KEY = '__GUEST_ENTRY_KEY__';
-const GUEST_MODE = location.pathname === '/findus' || location.pathname.startsWith('/findus/');
+const GUEST_MODE =
+  location.pathname === '/findus' || location.pathname.startsWith('/findus/');
 
 /**
  * 访客模式检查：若当前为访客模式，弹出提示并返回 true（表示操作被拦截）。
@@ -2577,20 +2637,46 @@ async function api(path, options = {}, {retries = 3, retryDelay = 800} = {}){
 /* ==================== 邮箱验证与访问控制 ==================== */
 let authAuthorized = false;
 let authEmail = '';
+let authAvatarSeed = '';
+let authIsInvite = false;
+let authIsGuest = false;
 
 async function checkAuth(){
   // 内部隐藏入口（/findus/）：跳过登录验证，直接放行，不保留任何登录信息
   if(GUEST_MODE){
+    authIsGuest = true;
+    authAuthorized = false;
     document.getElementById('authOverlay').classList.add('hidden');
     document.getElementById('pledgeOverlay').classList.add('hidden');
+    document.getElementById('headerUser').classList.add('hidden');
     return true;
   }
+  authIsGuest = false;
   try{
     const data = await api('/auth/check');
     if(data.authorized){
       authAuthorized = true;
       authEmail = data.email;
+      authAvatarSeed = data.avatarSeed || '';
+      authIsInvite = !!data.isInvite;
+      // 2026-08-28 改造：所有用户（老用户也必须重新注册），已存在的 token 视为登录中；
+      // 但 passwordSet=false 时引导其去重新注册面板。
+      if(!data.isInvite && data.passwordSet === false){
+        document.getElementById('headerUser').classList.add('hidden');
+        const ov = document.getElementById('authOverlay');
+        ov.classList.remove('hidden');
+        // 把邮箱预填到注册面板
+        const regEmail = document.getElementById('regEmail');
+        if(regEmail) regEmail.value = data.email || '';
+        const titleEl = document.getElementById('authTitle');
+        if(titleEl) titleEl.textContent = '请重新注册（设置密码）';
+        const tagEl = document.querySelector('.auth-tagline');
+        if(tagEl) tagEl.textContent = '2026-08-28 起所有用户需重新注册（老用户收藏保留）';
+        switchAuthPanel('register');
+        return false;
+      }
       document.getElementById('authOverlay').classList.add('hidden');
+      renderHeaderUser();
       // 检查是否已承诺：未承诺则只显示承诺遮罩，不加载主数据
       if(!data.pledged){
         document.getElementById('pledgeOverlay').classList.remove('hidden');
@@ -2602,6 +2688,7 @@ async function checkAuth(){
   }catch(e){ /* ignore */ }
   // 未授权，显示验证遮罩
   document.getElementById('authOverlay').classList.remove('hidden');
+  document.getElementById('headerUser').classList.add('hidden');
   return false;
 }
 
@@ -2619,6 +2706,125 @@ function loadAppData(){
     if(typeof loadWeeklyReport === 'function') loadWeeklyReport();
   }, 800);
 }
+
+/* ==================== 用户头像生成（前端 SVG hash） ==================== */
+// 用 sha256(seed) 决定几何形状，颜色，位置 → 抽象艺术风
+// 同一 seed 永远生成同一头像；动画通过 CSS keyframes 实现
+function _avatarBytes(seed){
+  // seed 是 hex 字符串；返回 8 字节的整数数组
+  if(!seed || seed.length < 16) return [0,1,2,3,4,5,6,7];
+  const out = [];
+  for(let i = 0; i < 8; i++) out.push(parseInt(seed.slice(i*2, i*2+2), 16) || 0);
+  return out;
+}
+function generateAvatarSVG(seed, size){
+  size = size || 80;
+  const b = _avatarBytes(seed);
+  // 两个渐变色（HSL hue）
+  const h1 = b[0] * 360 / 255;
+  const h2 = (b[1] * 360 / 255 + 180) % 360;
+  // 4 个形状参数
+  const shapes = [
+    { tag: 'circle',  cx: 20 + b[2] * 0.4, cy: 20 + b[3] * 0.4, r: 10 + b[4] * 0.2, opacity: 0.55 + (b[5] % 25) / 100 },
+    { tag: 'rect',    x:  5 + b[6] * 0.5,  y:  5 + b[7] * 0.3, w: 18 + b[0] * 0.25, h: 18 + b[1] * 0.25, opacity: 0.45, rx: 3 },
+    { tag: 'polygon', points: '40,5 ' + (30 + b[2] % 15) + ',' + (40 + b[3] % 25) + ' ' + (50 + b[4] % 20) + ',' + (40 + b[5] % 25), opacity: 0.4 },
+    { tag: 'circle',  cx: 50 + b[6] * 0.3, cy: 50 + b[7] * 0.3, r:  6 + b[0] * 0.15, opacity: 0.65 }
+  ];
+  const shapeSVG = shapes.map(s => {
+    const fill = 'hsl(' + ((h1 + s.cx * 3 + (s.cy || 0)) % 360) + ', 70%, ' + (60 + (s.cx + s.cy || 0) % 25) + '%)';
+    if(s.tag === 'circle') return `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="${fill}" opacity="${s.opacity}"/>`;
+    if(s.tag === 'rect')   return `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="${s.rx||0}" fill="${fill}" opacity="${s.opacity}"/>`;
+    if(s.tag === 'polygon') return `<polygon points="${s.points}" fill="${fill}" opacity="${s.opacity}"/>`;
+    return '';
+  }).join('');
+  return `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" style="display:block">
+    <defs>
+      <linearGradient id="avBg-${seed}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="hsl(${h1}, 65%, 60%)"/>
+        <stop offset="100%" stop-color="hsl(${h2}, 65%, 45%)"/>
+      </linearGradient>
+      <filter id="avBlur-${seed}"><feGaussianBlur stdDeviation="1.5"/></filter>
+    </defs>
+    <rect width="80" height="80" fill="url(#avBg-${seed})"/>
+    <g class="avatar-shapes" filter="url(#avBlur-${seed})">${shapeSVG}</g>
+  </svg>`;
+}
+
+function renderHeaderUser(){
+  const userEl = document.getElementById('headerUser');
+  if(!userEl) return;
+  if(!authAuthorized || authIsGuest){
+    userEl.classList.add('hidden');
+    return;
+  }
+  userEl.classList.remove('hidden');
+  const seed = authAvatarSeed || authEmail || 'default';
+  const svg = generateAvatarSVG(seed, 36);
+  const svgEl = document.getElementById('avatarSvg');
+  if(svgEl) svgEl.innerHTML = svg;
+  const miniEl = document.getElementById('userAvatarMini');
+  if(miniEl) miniEl.innerHTML = generateAvatarSVG(seed, 36);
+  const emailEl = document.getElementById('userEmail');
+  const metaEl = document.getElementById('userMeta');
+  if(authIsInvite){
+    // 邀请码用户：邮箱显示 `邀请码用户 (#后 4 位)`
+    const code = authEmail.replace(/^invite:/, '');
+    if(emailEl) emailEl.textContent = '邀请码用户';
+    if(metaEl) metaEl.textContent = '邀请码 #' + code.slice(-4);
+  } else {
+    if(emailEl) emailEl.textContent = authEmail;
+    if(metaEl) metaEl.textContent = '已登录';
+  }
+}
+
+// 头像菜单：点击头像打开/关闭，点外部/ Esc 关闭
+// 用 position:fixed + 动态定位（避免被父级 overflow-x:auto 裁剪）
+function setupAvatarMenu(){
+  const btn = document.getElementById('avatarBtn');
+  const menu = document.getElementById('userMenu');
+  if(!btn || !menu) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if(menu.hidden){
+      // 显示前：改为 fixed 并定位到头像正下方
+      const r = btn.getBoundingClientRect();
+      menu.style.position = 'fixed';
+      menu.style.top = (r.bottom + 8) + 'px';
+      menu.style.right = (window.innerWidth - r.right) + 'px';
+      menu.hidden = false;
+    } else {
+      // 关闭：恢复 absolute 定位
+      menu.style.position = '';
+      menu.style.top = '';
+      menu.style.right = '';
+      menu.hidden = true;
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if(menu.hidden) return;
+    if(!menu.contains(e.target) && e.target !== btn){
+      menu.hidden = true;
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && !menu.hidden) menu.hidden = true;
+  });
+  // 退出登录
+  menu.querySelector('[data-action="logout"]').addEventListener('click', async () => {
+    menu.hidden = true;
+    try{ await api('/auth/logout', {method:'POST', body:{}}); }catch(e){}
+    authAuthorized = false;
+    authEmail = '';
+    authAvatarSeed = '';
+    authIsInvite = false;
+    document.getElementById('headerUser').classList.add('hidden');
+    document.getElementById('pledgeOverlay').classList.add('hidden');
+    document.getElementById('authOverlay').classList.remove('hidden');
+    // 重置当前 Tab
+    switchAuthPanel('login');
+  });
+}
+document.addEventListener('DOMContentLoaded', setupAvatarMenu);
 
 async function acceptPledge(){
   try{
@@ -2642,92 +2848,112 @@ async function rejectPledge(){
   document.getElementById('authOverlay').classList.remove('hidden');
 }
 
-function authSetError(step, msg){
-  const el = document.getElementById('authError' + step);
+function authSetError(panelId, msg){
+  const el = document.getElementById(panelId + 'Error');
   if(el) el.textContent = msg || '';
 }
 
-async function authSendCode(){
-  const email = (document.getElementById('authEmail').value || '').trim().toLowerCase();
-  if(!email){ authSetError(1, '请输入邮箱地址'); return; }
-  if(!email.endsWith('@pku.edu.cn') && !email.endsWith('@stu.pku.edu.cn')){
-    authSetError(1, '请使用 @pku.edu.cn 或 @stu.pku.edu.cn 邮箱');
-    return;
-  }
-  authSetError(1, '');
-  const btn = document.getElementById('authSendBtn');
-  btn.disabled = true; btn.textContent = '发送中…';
-  try{
-    const data = await api('/auth/sendCode', {method:'POST', body:{email}});
-    // 切换到步骤2
-    document.getElementById('authStep1').style.display = 'none';
-    document.getElementById('authStep2').style.display = 'block';
-    document.getElementById('authEmailHint').textContent = '验证码已发送至 ' + email;
-    document.getElementById('authCode').focus();
-  }catch(e){
-    authSetError(1, e.message);
-  }finally{
-    btn.disabled = false; btn.textContent = '发送验证码';
-  }
+function isPkuEmail(email){
+  return /@(pku|stu\.pku)\.edu\.cn$/i.test(email);
 }
 
-async function authVerifyCode(){
-  const email = (document.getElementById('authEmail').value || '').trim().toLowerCase();
-  const code = (document.getElementById('authCode').value || '').trim();
-  if(!code || code.length !== 6){ authSetError(2, '请输入 6 位验证码'); return; }
-  authSetError(2, '');
-  const btn = document.getElementById('authVerifyBtn');
-  btn.disabled = true; btn.textContent = '验证中…';
+/* ============ 邮箱+密码登录（主入口） ============ */
+async function authLogin(){
+  const email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value || '';
+  authSetError('login', '');
+  if(!isPkuEmail(email)){ authSetError('login', '请使用 @pku.edu.cn 或 @stu.pku.edu.cn 邮箱'); return; }
+  if(!password){ authSetError('login', '请输入密码'); return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = '登录中…';
   try{
-    await api('/auth/verify', {method:'POST', body:{email, code}});
-    authAuthorized = true;
-    authEmail = email;
-    document.getElementById('authOverlay').classList.add('hidden');
-    // 新用户/未承诺用户：显示承诺窗口
-    document.getElementById('pledgeOverlay').classList.remove('hidden');
-  }catch(e){
-    authSetError(2, e.message);
-  }finally{
-    btn.disabled = false; btn.textContent = '验证';
-  }
-}
-
-// 绑定验证按钮事件
-document.getElementById('authSendBtn').addEventListener('click', authSendCode);
-document.getElementById('authVerifyBtn').addEventListener('click', authVerifyCode);
-document.getElementById('authResend').addEventListener('click', () => {
-  document.getElementById('authStep2').style.display = 'none';
-  document.getElementById('authStep1').style.display = 'block';
-  authSetError(1, '');
-  document.getElementById('authEmail').focus();
-});
-document.getElementById('authCode').addEventListener('keydown', e => { if(e.key==='Enter') authVerifyCode(); });
-document.getElementById('authEmail').addEventListener('keydown', e => { if(e.key==='Enter') authSendCode(); });
-document.getElementById('pledgeBtn').addEventListener('click', acceptPledge);
-document.getElementById('pledgeDeclineBtn').addEventListener('click', rejectPledge);
-
-/* ==================== 邀请码登录 ==================== */
-async function inviteLogin(){
-  const code = document.getElementById('inviteCode').value.trim().toUpperCase();
-  const errEl = document.getElementById('inviteError');
-  const btn = document.getElementById('inviteBtn');
-  if(!code){ errEl.textContent = '请输入邀请码'; return; }
-  errEl.textContent = '';
-  btn.disabled = true; btn.textContent = '验证中…';
-  try{
-    const data = await api('/auth/invite', {method:'POST', body:{code}});
+    const data = await api('/auth/login', {method:'POST', body:{email, password}});
     authAuthorized = true;
     authEmail = data.email;
+    authAvatarSeed = data.avatarSeed || '';
+    authIsInvite = !!data.isInvite;
     document.getElementById('authOverlay').classList.add('hidden');
     document.getElementById('pledgeOverlay').classList.remove('hidden');
   }catch(e){
-    errEl.textContent = e.message || '邀请码无效';
+    authSetError('login', e.message);
   }finally{
-    btn.disabled = false; btn.textContent = '进入';
+    btn.disabled = false; btn.textContent = '登录';
   }
 }
-document.getElementById('inviteBtn').addEventListener('click', inviteLogin);
-document.getElementById('inviteCode').addEventListener('keydown', e => { if(e.key==='Enter') inviteLogin(); });
+
+document.getElementById('loginBtn').addEventListener('click', authLogin);
+document.getElementById('loginPassword').addEventListener('keydown', e => { if(e.key==='Enter') authLogin(); });
+
+/* ============ 注册 / 重新注册（统一端点） ============ */
+async function regSendCode(){
+  const email = (document.getElementById('regEmail').value || '').trim().toLowerCase();
+  authSetError('reg', '');
+  if(!isPkuEmail(email)){ authSetError('reg', '请使用 @pku.edu.cn 或 @stu.pku.edu.cn 邮箱'); return; }
+  const btn = document.getElementById('regSendCodeBtn');
+  btn.disabled = true; btn.textContent = '发送中…';
+  try{
+    await api('/auth/sendCode', {method:'POST', body:{email}});
+    // 临时提示用 toast（避免与 regError 持久状态冲突）
+    if(typeof flash === 'function') flash('验证码已发送至 ' + email + '，请查收');
+    btn.textContent = '已发送';
+    setTimeout(() => { btn.textContent = '发送'; btn.disabled = false; }, 60000);
+  }catch(e){
+    authSetError('reg', e.message);
+    btn.disabled = false; btn.textContent = '发送';
+  }
+}
+
+async function authRegister(){
+  const email = (document.getElementById('regEmail').value || '').trim().toLowerCase();
+  const code = (document.getElementById('regCode').value || '').trim();
+  const pw = document.getElementById('regPassword').value || '';
+  const pw2 = document.getElementById('regPassword2').value || '';
+  const inviteCode = (document.getElementById('regInviteCode').value || '').trim();
+  authSetError('reg', '');
+  if(!isPkuEmail(email)){ authSetError('reg', '请使用北大校园邮箱'); return; }
+  if(!code || code.length !== 6){ authSetError('reg', '请输入 6 位验证码'); return; }
+  if(!inviteCode){ authSetError('reg', '请填写邀请码'); return; }
+  if(pw.length < 8){ authSetError('reg', '密码至少 8 位'); return; }
+  if(pw !== pw2){ authSetError('reg', '两次密码输入不一致'); return; }
+  const btn = document.getElementById('regBtn');
+  btn.disabled = true; btn.textContent = '注册中…';
+  try{
+    const data = await api('/auth/register', {method:'POST', body:{email, code, password: pw, inviteCode}});
+    // 注册 / 重新注册都自动登录
+    authAuthorized = true;
+    authEmail = data.email;
+    authAvatarSeed = data.avatarSeed || '';
+    authIsInvite = false;
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('pledgeOverlay').classList.remove('hidden');
+    if(typeof flash === 'function') flash(data.message || '注册成功，已自动登录');
+  }catch(e){
+    authSetError('reg', e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = '注册 / 重新注册';
+  }
+}
+
+document.getElementById('regSendCodeBtn').addEventListener('click', regSendCode);
+document.getElementById('regBtn').addEventListener('click', authRegister);
+document.getElementById('regInviteCode').addEventListener('keydown', e => { if(e.key==='Enter') authRegister(); });
+document.getElementById('regPassword2').addEventListener('keydown', e => { if(e.key==='Enter') authRegister(); });
+
+/* ============ Tab 切换 ============ */
+function switchAuthPanel(mode){
+  document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  document.querySelectorAll('.auth-mode').forEach(m => m.classList.toggle('active', m.id === 'mode' + mode.charAt(0).toUpperCase() + mode.slice(1)));
+  // 清错误
+  ['login','reg'].forEach(p => authSetError(p, ''));
+}
+
+// data-switch 链接统一处理
+document.querySelectorAll('[data-switch]').forEach(a => {
+  a.addEventListener('click', () => switchAuthPanel(a.dataset.switch));
+});
+
+document.getElementById('pledgeBtn').addEventListener('click', acceptPledge);
+document.getElementById('pledgeDeclineBtn').addEventListener('click', rejectPledge);
 
 /* ==================== 作者信箱弹窗（未登录访客） ==================== */
 function openMsgOverlay(source){
@@ -2743,7 +2969,7 @@ function openMsgOverlay(source){
 function closeMsgOverlay(){
   document.getElementById('msgOverlay').classList.add('hidden');
 }
-document.getElementById('getInviteCodeLink').addEventListener('click', () => openMsgOverlay('获取邀请码'));
+// 「获取邀请码」入口已下线（邀请码仅用于注册，需向站长索取）
 document.getElementById('emailProblemLink').addEventListener('click', () => openMsgOverlay('遇到问题'));
 document.getElementById('msgClose').addEventListener('click', closeMsgOverlay);
 document.getElementById('msgOverlay').addEventListener('click', e => {
