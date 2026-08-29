@@ -99,9 +99,9 @@ def get_db_last_update() -> int:
 
 def check_pku_token() -> tuple[bool, str]:
     """探测树洞 API 是否能正常访问。
-    - True: 200 OK
-    - False: 401 Unauthorized 或其他错误
-    返回 (ok, detail)。"""
+    关键：PKU 树洞 API 接受 Authorization: Bearer <token> 而非 Cookie。
+    之前用 Cookie 一直误报 401，这次改用 Bearer + 真实 UA。
+    """
     pku_token = os.environ.get("PKU_TOKEN", "")
     pku_uuid = os.environ.get("PKU_UUID", "")
     if not pku_token or not pku_uuid:
@@ -111,9 +111,12 @@ def check_pku_token() -> tuple[bool, str]:
         req = urllib.request.Request(
             "https://treehole.pku.edu.cn/api/pku_hole?page=1&limit=5",
             headers={
-                "Cookie": f"pku_token={pku_token}",
+                "authorization": "Bearer " + pku_token,
                 "uuid": pku_uuid,
-                "User-Agent": "AutoTreehole-Monitor/1.0"
+                "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                "referer": "https://treehole.pku.edu.cn/web/?from=hot",
+                "accept": "application/json, text/plain, */*",
+                "accept-language": "zh-CN,zh;q=0.9",
             }
         )
         with urllib.request.urlopen(req, timeout=10) as r:
