@@ -97,6 +97,37 @@ def get_db_last_update() -> int:
         return 0
 
 
+def check_pku_token() -> tuple[bool, str]:
+    """探测树洞 API 是否能正常访问。
+    - True: 200 OK
+    - False: 401 Unauthorized 或其他错误
+    返回 (ok, detail)。"""
+    pku_token = os.environ.get("PKU_TOKEN", "")
+    pku_uuid = os.environ.get("PKU_UUID", "")
+    if not pku_token or not pku_uuid:
+        return False, "PKU_TOKEN / PKU_UUID 未配置"
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "https://treehole.pku.edu.cn/api/pku_hole?page=1&limit=5",
+            headers={
+                "Cookie": f"pku_token={pku_token}",
+                "uuid": pku_uuid,
+                "User-Agent": "AutoTreehole-Monitor/1.0"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            status = r.getcode()
+            body = r.read(500).decode("utf-8", errors="ignore")
+            if status == 200 and body.strip().startswith("{"):
+                return True, "OK"
+            return False, f"HTTP {status}: {body[:120]}"
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}: {e.reason}"
+    except Exception as e:
+        return False, f"网络异常: {type(e).__name__}: {e}"
+
+
 def restart_crawler() -> bool:
     """重启 treehole-crawler systemd 服务。返回是否成功。"""
     try:
@@ -198,6 +229,46 @@ def main() -> int:
     state = load_state()
     now_ts = int(time.time())
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # ========== PKU Token 健康检查（独立分支）==========
+    # Token 401 表现为：DB 长时间无更新（爬虫拿到 401 不会写库）。
+    # 仅靠 DB 阈值告警无法区分"爬虫卡死" vs "Token 失效"，需主动探测 API。
+    token_ok, token_detail = check_pku_token()
+    log(f"[token] PKU API 探测: {'OK' if token_ok else 'FAIL'} ({token_detail})")
+    if not token_ok:
+        # 不重启（重启无效），但立即告警
+        subject = f"🔑 AutoTreehole PKU Token 失效：{token_detail[:60]}"
+        body = f"""
+<html><body style="font-family:-apple-system,Segoe UI,Roboto,'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.7;color:#212529;max-width:640px;margin:24px auto;padding:0 16px;">
+<h2 style="color:#dc2626;margin:0 0 16px;">🔑 PKU Token 已失效</h2>
+<p>树洞 API 返回非 200 响应：<b>{token_detail}</b></p>
+<p>爬虫仍在运行但无法写入新数据。<b>请尽快用浏览器登录 https://treehole.pku.edu.cn 获取新的 pku_token 和 uuid，更新服务器 <code>/opt/treehole/.env</code> 后重启爬虫：</b></p>
+<pre style="background:#1f2937;color:#f9fafb;padding:14px;border-radius:6px;overflow-x:auto;font-size:13px;">
+ssh treehole
+sed -i 's|^PKU_TOKEN=.*|PKU_TOKEN=&lt;新token&gt;|' /opt/treehole/.env
+sed -i 's|^PKU_UUID=.*|PKU_UUID=&lt;新uuid&gt;|' /opt/treehole/.env
+systemctl restart treehole-crawler
+pm2 restart treehole-api --update-env</pre>
+<p style="background:#fffbeb;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:4px;">
+<b>如何获取新 token：</b>浏览器登录树洞 → F12 → Application → Cookies → 复制 <code>pku_token</code>；F12 → Network → 任一请求 → 复制请求头 <code>uuid</code>。
+</p>
+<p style="color:#86868b;font-size:12px;margin-top:24px;">AutoTreehole Monitor · {now_str}</p>
+</body></html>
+"""
+        # 去重：同一故障 6 小时只发一次（避免邮件刷屏）
+        last_token_alert = state.get("last_token_alert", 0)
+        if now_ts - last_token_alert >= 6 * 3600:
+            send_email(subject, body)
+            state["last_token_alert"] = now_ts
+            state["token_alert_detail"] = token_detail
+            save_state(state)
+        # 不 return，继续跑 DB 检查（让 DB 阈值告警也能发出去，互补）
+    else:
+        # Token 正常 → 清除 token 告警状态
+        if state.get("last_token_alert"):
+            log("[token] PKU API 已恢复，清除告警状态")
+            state.pop("last_token_alert", None)
+            state.pop("token_alert_detail", None)
 
     last_upd = get_db_last_update()
     if last_upd == 0:
