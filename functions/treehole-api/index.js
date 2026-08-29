@@ -1517,6 +1517,18 @@ function getMailer() {
 }
 
 async function sendVerifyCodeEmail(toEmail, code) {
+  const isPku = /@(pku|stu\.pku)\.edu\.cn$/i.test(toEmail);
+  // 北大 ICoremail 收件服务器对新域名（autotreehole.cn）会静默黑洞，
+  // 表面 SMTP 投递成功（250），但用户端永远看不到。
+  // 兜底方案：PKU 用户在邮件正文里看到明确的"备用获取渠道"指引；
+  // 同时后端 console.log 验证码到服务器日志，方便站长 pm2 logs 人工分发。
+  const hint = isPku
+    ? `<p style="color:#C8A9A9;font-size:13px;line-height:1.7;margin-top:20px;padding:14px;background:#FFF8F0;border-radius:8px;border:1px solid #F0E0D0;">
+        ⚠️ 如果你 2 分钟内没收到验证码（北大邮件系统偶尔会静默吞掉来自新域名的邮件），<br>
+        请点击登录页底部的 <b>「遇到问题？」</b> 按钮联系站长索取验证码，<br>
+        或直接发邮件到 <a href="mailto:${SITE_OWNER_EMAIL}" style="color:#C8A9A9;text-decoration:underline">${SITE_OWNER_EMAIL}</a> 主题写你的注册邮箱。
+      </p>`
+    : "";
   const mailOptions = {
     from: MAIL_FROM,
     to: toEmail,
@@ -1528,8 +1540,13 @@ async function sendVerifyCodeEmail(toEmail, code) {
         <span style="font-size:32px;font-weight:600;letter-spacing:8px;color:#1D1D1F;font-family:'SF Mono',Menlo,monospace;">${code}</span>
       </div>
       <p style="color:#86868B;font-size:12px;line-height:1.6;">验证码 5 分钟内有效。如非本人操作，请忽略此邮件。</p>
+      ${hint}
     </div>`,
   };
+  // PKU 用户的验证码额外输出到日志（供站长人工补发兜底用）
+  if (isPku) {
+    console.log(`[auth][pku-fallback] ${toEmail} 的验证码: ${code}`);
+  }
   await getMailer().sendMail(mailOptions);
 }
 
