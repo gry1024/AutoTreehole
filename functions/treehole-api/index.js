@@ -2367,7 +2367,7 @@ function handleAuthRegister(body, ip) {
   if (isReturningUser) {
     db.prepare(
       "UPDATE users SET password_hash = ?, password_salt = '', password_set_at = ?, avatar_seed = ?, last_visit = ?, visit_count = visit_count + 1 WHERE email = ?"
-    ).run(hash, now, now, seed, now, email);
+    ).run(hash, now, seed, now, email);
     console.log(`[auth] 老用户重新注册成功: ${email}`);
   } else {
     db.prepare(
