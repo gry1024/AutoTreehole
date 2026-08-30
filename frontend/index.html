@@ -536,6 +536,31 @@ select.input{
 }
 @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,199,89,0.3)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(52,199,89,0)}}
 
+/* 热帖排序切换 · 分段控件 */
+.os-sort-switch{
+  display:inline-flex;align-items:center;
+  padding:2px;gap:2px;
+  background:var(--divider-subtle);
+  border-radius:9px;
+  align-self:flex-end;
+}
+.os-sort-switch button{
+  padding:5px 14px;
+  font-size:0.8rem;font-weight:400;
+  font-family:var(--font-sans);letter-spacing:0.02em;
+  color:var(--fg-secondary);
+  background:none;border:none;border-radius:7px;
+  cursor:pointer;white-space:nowrap;
+  transition:color .2s,background .2s,box-shadow .2s;
+}
+.os-sort-switch button:hover{color:var(--fg)}
+.os-sort-switch button.active{
+  background:var(--bg-elevated);
+  color:var(--fg);
+  font-weight:500;
+  box-shadow:0 1px 3px rgba(0,0,0,0.08);
+}
+
 .bubble-grid{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
@@ -1586,6 +1611,8 @@ mark{
   .os-title{font-size:1.2rem;flex-wrap:wrap;gap:6px 8px}
   .os-badge{font-size:0.667rem;padding:2px 8px}
   .os-sub-inline{font-size:0.733rem;width:100%;margin-left:0;order:99}
+  .os-sort-switch{align-self:flex-start;margin-top:4px}
+  .os-sort-switch button{padding:4px 12px;font-size:0.733rem}
   .toolbar{flex-direction:column;align-items:stretch;gap:12px}
   .toolbar .input,.toolbar select.input{width:100%}
   .btn{width:100%}
@@ -2276,6 +2303,10 @@ mark{
             <span class="os-sub-inline">点击卡片查看完整内容与评论</span>
           </div>
         </div>
+        <div class="os-sort-switch" data-range="d24" title="切换排序规则">
+          <button class="active" data-sort="like">收藏量</button>
+          <button data-sort="time">最新发布</button>
+        </div>
       </div>
       <div class="bubble-grid" id="bubbleGrid24h">
         <div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary)">
@@ -2294,6 +2325,10 @@ mark{
             <span class="os-badge">近 7 天 · 收藏 ≥ 10</span>
             <span class="os-sub-inline">点击卡片查看完整内容与评论</span>
           </div>
+        </div>
+        <div class="os-sort-switch" data-range="d7" title="切换排序规则">
+          <button class="active" data-sort="like">收藏量</button>
+          <button data-sort="time">最新发布</button>
         </div>
       </div>
       <div class="bubble-grid" id="bubbleGrid7d">
@@ -3752,28 +3787,41 @@ const HEART_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25
 const CMT_ICON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5z"/></svg>';
 
 // 热帖速览数据缓存（供展开全部时使用，避免重复请求）
-const overviewCache = { d24: null, d7: null, d24Loading: false, d7Loading: false };
+// key 为 `${range}_${sort}`（如 d24_like / d7_time），每种排序各自独立缓存
+const overviewCache = {
+  'd24_like': null, 'd24_time': null, 'd7_like': null, 'd7_time': null,
+  'd24_likeLoading': false, 'd24_timeLoading': false, 'd7_likeLoading': false, 'd7_timeLoading': false,
+  'd24_likePendingRender': false, 'd24_timePendingRender': false, 'd7_likePendingRender': false, 'd7_timePendingRender': false
+};
+
+// 两个板块的当前排序：'like' = 收藏量降序（默认），'time' = 发布时间最近
+const overviewSort = { d24: 'like', d7: 'like' };
+
+// 组合缓存 key（range: 'd24' | 'd7'）
+function overviewCacheKey(range){ return range + '_' + overviewSort[range]; }
 
 async function loadOverviewHot(silent){
   const grid24h = document.getElementById('bubbleGrid24h');
   const grid7d = document.getElementById('bubbleGrid7d');
 
   // 标记 cacheKey，供 renderBubbleGrid 的展开按钮识别并处理 loading
-  grid24h.dataset.cacheKey = 'd24';
-  grid7d.dataset.cacheKey = 'd7';
+  const key24 = overviewCacheKey('d24');
+  const key7  = overviewCacheKey('d7');
+  grid24h.dataset.cacheKey = key24;
+  grid7d.dataset.cacheKey = key7;
 
   // 静默刷新（60s 自动刷新）：若已有完整缓存，直接后台更新完整数据，
   // 不重渲染首批，避免用户展开完整数据时出现"完整→6条→完整"的闪烁
-  if(silent && overviewCache['d24'] !== null && overviewCache['d7'] !== null){
-    loadFullOverview(grid24h, 'd24', 1);
-    loadFullOverview(grid7d,  'd7',  7);
+  if(silent && overviewCache[key24] !== null && overviewCache[key7] !== null){
+    loadFullOverview(grid24h, key24, 1);
+    loadFullOverview(grid7d,  key7,  7);
     return;
   }
 
   // ===== 第一批：快速加载前 6 条，首屏立即可见 =====
   const [fast24, fast7] = await Promise.allSettled([
-    api('/hot?days=1&min_like=10&limit=6'),
-    api('/hot?days=7&min_like=10&limit=6')
+    api(`/hot?days=1&min_like=10&limit=6&sort=${overviewSort.d24}`),
+    api(`/hot?days=7&min_like=10&limit=6&sort=${overviewSort.d7}`)
   ]);
   const posts24_fast = fast24.status==='fulfilled' ? (fast24.value.posts||[]) : null;
   const posts7_fast  = fast7.status==='fulfilled'  ? (fast7.value.posts||[])  : null;
@@ -3782,14 +3830,51 @@ async function loadOverviewHot(silent){
 
   // 预创建"展开全部"按钮：即使首批只有 6 条，也先露出按钮，
   // 用户点击时若完整数据未加载完则显示 loading 转圈
-  ensureOverviewToggle(grid24h, 'd24');
-  ensureOverviewToggle(grid7d,  'd7');
+  ensureOverviewToggle(grid24h, key24);
+  ensureOverviewToggle(grid7d, key7);
 
   // ===== 第二批：后台静默加载完整数据（最多 100 条）=====
   // 加载完成后缓存数据，若用户已展开则自动替换；未展开则在点击展开时使用缓存
-  loadFullOverview(grid24h, 'd24', 1);
-  loadFullOverview(grid7d,  'd7',  7);
+  loadFullOverview(grid24h, key24, 1);
+  loadFullOverview(grid7d, key7, 7);
 }
+
+// 切换概览热帖排序（range: 'd24' | 'd7'；sort: 'like' | 'time'）
+function switchOverviewSort(range, sort){
+  if(overviewSort[range] === sort) return;
+  overviewSort[range] = sort;
+  const grid = document.getElementById(range === 'd24' ? 'bubbleGrid24h' : 'bubbleGrid7d');
+  const key = overviewCacheKey(range);
+  grid.dataset.cacheKey = key;
+  if(overviewCache[key] !== null){
+    // 已缓存该排序的完整数据：直接渲染（renderBubbleGrid 自动处理折叠与展开按钮）
+    renderBubbleGrid(grid, overviewCache[key], null);
+    return;
+  }
+  // 未缓存：显示 loading，等待完整数据
+  grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--fg-secondary)">
+    <span class="spinner spinner-lg"></span>
+    <div style="margin-top:12px;font-size:0.933rem;font-weight:300">正在加载…</div>
+  </div>`;
+  const oldToggle = grid.nextElementSibling;
+  if(oldToggle && oldToggle.classList.contains('bubble-toggle')) oldToggle.style.display = 'none';
+  if(overviewCache[key + 'Loading']){
+    // 该排序已在后台加载中：标记完成后渲染
+    overviewCache[key + 'PendingRender'] = true;
+  }else{
+    loadFullOverview(grid, key, range === 'd24' ? 1 : 7, true);
+  }
+}
+
+// 排序切换按钮事件
+document.querySelectorAll('.os-sort-switch').forEach(sw => {
+  sw.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-sort]');
+    if(!btn || btn.classList.contains('active')) return;
+    sw.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    switchOverviewSort(sw.dataset.range, btn.dataset.sort);
+  });
+});
 
 // 为概览热帖 grid 预创建"展开全部"按钮（即使首批数据 ≤6 条也显示）
 // 点击展开时：若完整数据已缓存则直接渲染；若仍在加载则显示 loading 转圈
@@ -3836,13 +3921,24 @@ function ensureOverviewToggle(grid, cacheKey){
   };
 }
 
-// 后台加载完整热帖数据
-function loadFullOverview(grid, cacheKey, days){
+// 后台加载完整热帖数据（force=true 时加载完成后强制渲染，用于排序切换）
+function loadFullOverview(grid, cacheKey, days, force){
   if(overviewCache[cacheKey + 'Loading']) return; // 防重复加载
   overviewCache[cacheKey + 'Loading'] = true;
-  api(`/hot?days=${days}&min_like=10&limit=100`).then(data => {
+  // 排序规则从 cacheKey 解析（如 d24_time → time），保证数据与缓存 key 一致
+  const sort = cacheKey.endsWith('_time') ? 'time' : 'like';
+  api(`/hot?days=${days}&min_like=10&limit=100&sort=${sort}`).then(data => {
     overviewCache[cacheKey] = data.posts || [];
     overviewCache[cacheKey + 'Loading'] = false;
+    // grid 当前展示的已不是该 cacheKey（用户切换排序）：只更新缓存，不动视图
+    if(grid.dataset.cacheKey !== cacheKey) return;
+    // 排序切换触发的加载（或切换时已在加载中）：渲染完整数据
+    const pending = overviewCache[cacheKey + 'PendingRender'];
+    overviewCache[cacheKey + 'PendingRender'] = false;
+    if(force || pending){
+      renderBubbleGrid(grid, overviewCache[cacheKey], null);
+      return;
+    }
     // 若用户已展开，静默替换为完整数据
     if(!grid.classList.contains('collapsed') && grid.querySelector('.bubble-card')){
       renderBubbleGrid(grid, overviewCache[cacheKey], null);

@@ -761,16 +761,20 @@ function queryStats() {
   return { holes, comments, week, avg_like: avg.l || 0, avg_reply: avg.r || 0, min_ts: tr.min, max_ts: tr.max, categories, total_7d: total7d };
 }
 
-function queryHot(days, limit, minLike) {
+// sort: 'like' = 收藏量降序（默认），'time' = 发布时间降序（最新发布优先）
+const HOT_SORT_MAP = { like: "likenum DESC, pid DESC", time: "timestamp DESC, pid DESC" };
+
+function queryHot(days, limit, minLike, sort) {
   const since = Math.floor(Date.now() / 1000) - days * 86400;
+  const orderBy = HOT_SORT_MAP[sort] || HOT_SORT_MAP.like; // 白名单取值，防注入
   if (minLike && minLike > 0) {
     return queryAll(
-      "SELECT pid, text, timestamp, likenum, reply, type, image_size, COALESCE(deleted,0) as deleted FROM holes WHERE timestamp >= ? AND likenum >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+      `SELECT pid, text, timestamp, likenum, reply, type, image_size, COALESCE(deleted,0) as deleted FROM holes WHERE timestamp >= ? AND likenum >= ? ORDER BY ${orderBy} LIMIT ?`,
       [since, minLike, limit]
     );
   }
   return queryAll(
-    "SELECT pid, text, timestamp, likenum, reply, type, image_size, COALESCE(deleted,0) as deleted FROM holes WHERE timestamp >= ? ORDER BY likenum DESC, pid DESC LIMIT ?",
+    `SELECT pid, text, timestamp, likenum, reply, type, image_size, COALESCE(deleted,0) as deleted FROM holes WHERE timestamp >= ? ORDER BY ${orderBy} LIMIT ?`,
     [since, limit]
   );
 }
@@ -1064,7 +1068,9 @@ function handleHot(query) {
   const days = validateInt(query.days, 1, MAX_DAYS, 7);
   const limit = validateInt(query.limit, 1, MAX_LIMIT, 20);
   const minLike = query.min_like ? validateInt(query.min_like, 0, 9999, 0) : 0;
-  return { posts: queryHot(days, limit, minLike) };
+  // 排序规则：like = 收藏量降序（默认），time = 发布时间最近优先
+  const sort = query.sort === "time" ? "time" : "like";
+  return { posts: queryHot(days, limit, minLike, sort) };
 }
 
 function handleSearch(query) {
