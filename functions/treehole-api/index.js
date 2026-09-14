@@ -79,8 +79,8 @@ const AGENT_FINGERPRINT_GRACE_MIN = 5; // 指纹建立缓冲期（分钟）：�
 
 // 输入限制
 const MAX_KEYWORD_LEN = 80;
-const MAX_LIMIT = 100;
-const MAX_DAYS = 90;
+const MAX_LIMIT = 500;
+const MAX_DAYS = 365;
 const MAX_POSTS_FOR_LLM = 200;
 const MIN_USEFUL_LEN = 4;
 
@@ -2815,11 +2815,7 @@ function handleSubscribeAdd(body, req) {
   if (rejectReason) throw new Error(rejectReason);
   // 收信邮箱：强制使用用户注册邮箱（忽略前端传入的 notifyEmail，防止借订阅向他人邮箱轰炸）
   const notifyEmail = email;
-  // 数量上限
-  const cnt = queryOne("SELECT COUNT(*) as c FROM subscriptions WHERE user_email = ?", [email]).c;
-  if (cnt >= MAX_SUBS_PER_USER) {
-    throw new Error(`每人最多订阅 ${MAX_SUBS_PER_USER} 个关键词`);
-  }
+  // 已取消订阅词数量上限（保留变量定义以兼容前端字段）
   const now = Math.floor(Date.now() / 1000);
   try {
     db.prepare("INSERT INTO subscriptions (user_email, notify_email, keyword, created_at) VALUES (?, ?, ?, ?)")

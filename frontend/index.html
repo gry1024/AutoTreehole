@@ -2359,11 +2359,18 @@ mark{
       </div>
       <div class="field">
         <label>天数</label>
-        <input type="number" id="hotDays" class="input input-sm" value="7" min="1" max="90">
+        <input type="number" id="hotDays" class="input input-sm" value="7" min="1" max="365">
       </div>
       <div class="field">
         <label>数量</label>
-        <input type="number" id="hotLimit" class="input input-sm" value="20" min="1" max="100">
+        <input type="number" id="hotLimit" class="input input-sm" value="20" min="1" max="500">
+      </div>
+      <div class="field" id="hotSortField">
+        <label>排序</label>
+        <div class="mode-switch" id="hotSortSwitch" style="height:32px">
+          <button class="active" data-sort="like">收藏量</button>
+          <button data-sort="time">时间最近</button>
+        </div>
       </div>
       <button class="btn btn-primary" id="loadHot">获取</button>
     </div>
@@ -4149,6 +4156,7 @@ function skeletonList(n=4){
 
 /* ==================== 热帖（含关键词搜索） ==================== */
 let hotMode = 'hot'; // 'hot' = 默认筛选, 'keyword' = 关键词匹配
+let hotSort = 'like'; // 'like' = 收藏量降序, 'time' = 发布时间最近
 
 document.getElementById('hotModeSwitch').querySelectorAll('button').forEach(b => {
   b.addEventListener('click', () => {
@@ -4158,11 +4166,19 @@ document.getElementById('hotModeSwitch').querySelectorAll('button').forEach(b =>
   });
 });
 
+// 排序切换按钮
+document.getElementById('hotSortSwitch').querySelectorAll('button').forEach(b => {
+  b.addEventListener('click', () => {
+    hotSort = b.dataset.sort;
+    document.getElementById('hotSortSwitch').querySelectorAll('button').forEach(x => x.classList.toggle('active', x===b));
+  });
+});
+
 async function loadHot(silent){
   const days = parseInt(document.getElementById('hotDays').value, 10);
   const limit = parseInt(document.getElementById('hotLimit').value, 10);
-  if(!days || days < 1 || days > 90){ if(!silent) flash('error', '天数需为 1-90 之间的整数'); return; }
-  if(!limit || limit < 1 || limit > 100){ if(!silent) flash('error', '数量需为 1-100 之间的整数'); return; }
+  if(!days || days < 1 || days > 365){ if(!silent) flash('error', '天数需为 1-365 之间的整数'); return; }
+  if(!limit || limit < 1 || limit > 500){ if(!silent) flash('error', '数量需为 1-500 之间的整数'); return; }
 
   const box = document.getElementById('hotList');
   if(!silent) box.innerHTML = skeletonList();
@@ -4177,9 +4193,10 @@ async function loadHot(silent){
       renderPostList(data.posts, box, keyword);
       if(!silent) flash('success', `搜索完成：共 ${data.posts?data.posts.length:0} 条模糊匹配 "${keyword}" · 最近 ${days} 天`);
     }else{
-      data = await api(`/hot?days=${days}&limit=${limit}`);
+      data = await api(`/hot?days=${days}&limit=${limit}&sort=${hotSort}`);
       renderPostList(data.posts, box, null);
-      if(!silent) flash('success', `已加载热帖：共 ${data.posts?data.posts.length:0} 条 · 最近 ${days} 天`);
+      const sortLabel = hotSort === 'time' ? '时间最近' : '收藏量降序';
+      if(!silent) flash('success', `已加载热帖：共 ${data.posts?data.posts.length:0} 条 · 最近 ${days} 天 · ${sortLabel}`);
     }
   }catch(e){
     if(!silent){ box.innerHTML = ''; flash('error', '加载失败：' + e.message); }
@@ -5402,22 +5419,22 @@ async function loadSubscriptions(){
 function renderSubscriptions(){
   const wrap = document.getElementById('subscribeContent');
   if(!wrap) return;
-  const remaining = subState.max - subState.list.length;
   const notifyField = subState.isInvite ? `
     <div class="sub-field" style="flex-basis:100%">
       <label>收信邮箱（邀请码用户必填）</label>
       <input type="email" id="subNotifyEmail" class="sub-input" placeholder="用于接收推送邮件的邮箱" maxlength="100">
     </div>` : '';
-  const addHtml = remaining > 0 ? `
+  // 已取消订阅词数量上限（max 字段保留兼容，仅显示在列表说明）
+  const addHtml = `
     <div class="sub-add-wrap">
       ${notifyField}
       <div class="sub-field">
         <label>关键词</label>
         <input type="text" id="subKeywordInput" class="sub-input" placeholder="如xk/羽毛球场/llm" maxlength="30">
       </div>
-      <div class="sub-note" style="margin-bottom:16px">发现含有关键词的新洞将立即推送邮件提醒，最多订阅 ${subState.max} 个关键词</div>
+      <div class="sub-note" style="margin-bottom:16px">发现含有关键词的新洞将立即推送邮件提醒，订阅词数量无上限</div>
       <button class="sub-add-btn" id="subAddBtn">添加订阅</button>
-    </div>` : `<div class="sub-note" style="margin-bottom:24px">已达订阅上限（${subState.max} 个），删除现有订阅后可重新添加。</div>`;
+    </div>`;
 
   let listHtml;
   if(subState.list.length === 0){
