@@ -1239,6 +1239,66 @@ async function generateWeeklyReport(retryCount = 0) {
   }
 }
 
+/** 补跑所有缺漏的历史周报（按从旧到新顺序串行生成）。
+ *  - 只补"上周一之前且本周一之后"的所有自然周（已存在则跳过，幂等）
+ *  - 不会重复推送邮件给订阅者（因为这些周报都是历史周报，不再发邮件） */
+async function backfillMissingWeeklyReports() {
+  await ensureDb();
+  const SH_OFFSET_MS = 8 * 3600_000;
+  const shNow = new Date(Date.now() + SH_OFFSET_MS);
+  const day = shNow.getUTCDay();
+  const monIdx = (day + 6) % 7;
+  const thisMonSec = Math.floor((Date.UTC(shNow.getUTCFullYear(), shNow.getUTCMonth(), shNow.getUTCDate() - monIdx) - SH_OFFSET_MS) / 1000);
+  // 本周一之前的所有"上周一"（含）→ 这次补跑的不包含当前"上周"，那个由定时器生成
+  const targetWeeks = [];
+  let ws = thisMonSec - 7 * 86400; // 上周一
+  while (ws >= 1780000000) { // 太早的不要（数据库从今年初开始）
+    if (!queryOne("SELECT id FROM weekly_reports WHERE week_start = ?", [ws])) {
+      targetWeeks.push(ws);
+    }
+    ws -= 7 * 86400;
+  }
+  if (!targetWeeks.length) {
+    console.log("[weekly] 启动补跑检查：没有缺漏的周报");
+    return;
+  }
+  console.log(`[weekly] 启动补跑：缺漏 ${targetWeeks.length} 期（从旧到新）`);
+  for (const week_start of targetWeeks) {
+    const week_end = week_start + 7 * 86400;
+    try {
+      const rows = queryAll(
+        "SELECT pid, text, timestamp, likenum, reply, COALESCE(deleted,0) as deleted FROM holes WHERE timestamp >= ? AND timestamp < ? ORDER BY pid ASC",
+        [week_start, week_end]
+      );
+      if (!rows.length) {
+        console.log(`[weekly] 补跑跳过 week_start=${week_start}（无帖子）`);
+        continue;
+      }
+      const useful = filterUseful(rows);
+      if (!useful.length) {
+        console.log(`[weekly] 补跑跳过 week_start=${week_start}（无有效帖子）`);
+        continue;
+      }
+      const { posts, sampled } = sampleForLlm(useful);
+      const promptData = buildWeeklyReportPrompt(posts, week_start, week_end, useful.length, sampled);
+      console.log(`[weekly] 补跑 week_start=${week_start}：${useful.length} 有效帖，传入 ${posts.length} 条`);
+      const content = await callLlmWithFallback(promptData.system, promptData.user, "minimax", null, "system-weekly");
+      const enriched = enrichReport(content);
+      db.prepare(
+        "INSERT INTO weekly_reports (week_start, week_end, content, created_at) VALUES (?,?,?,?)"
+      ).run(week_start, week_end, enriched, Math.floor(Date.now() / 1000));
+      console.log(`[weekly] 补跑成功 week_start=${week_start}`);
+      // 历史补跑：不推送给订阅者（避免追溯邮件轰炸）
+    } catch (e) {
+      console.error(`[weekly] 补跑失败 week_start=${week_start}: ${e.message}`);
+      // 失败也继续补下一期，不要因单期失败阻塞
+    }
+    // 每期之间间隔 5 秒，避免 LLM API rate limit
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  console.log("[weekly] 启动补跑全部完成");
+}
+
 /** 返回树洞周报：不带 week_start 时返回最近若干期列表（含摘要），带 week_start 返回单期全文 */
 function handleWeeklyReport(query) {
   // 单期详情
@@ -4179,14 +4239,20 @@ setInterval(checkTokenAndWarn, 3600_000);
 setTimeout(() => { try { ensureDb(); scanAndNotify(); } catch (e) { console.error("[subscribe] 启动扫描失败:", e.message); } }, 60_000);
 setInterval(() => { try { scanAndNotify(); } catch (e) { console.error("[subscribe] 定时扫描异常:", e.message); } }, SUB_SCAN_INTERVAL_MS);
 
-// ==================== 树洞周报定时器（已停用：网站停止更新） ====================
-// setTimeout(() => { generateWeeklyReport().catch(e => console.error("[weekly] 启动补跑失败:", e.message)); }, 180_000);
-// setInterval(() => {
-//   const sh = new Date(Date.now() + 8 * 3600_000); // 上海墙上时间
-//   if (sh.getUTCDay() === 1 && sh.getUTCHours() === 4) {
-//     generateWeeklyReport().catch(e => console.error("[weekly] 定时生成失败:", e.message));
-//   }
-// }, 3600_000);
+// ==================== 树洞周报定时器（每周一 04:00 上海时间生成上周周报） ====================
+// 启动后 180 秒先补齐所有缺漏的历史周报（按从旧到新串行生成，不推送邮件）
+setTimeout(() => {
+  backfillMissingWeeklyReports()
+    .then(() => generateWeeklyReport().catch(e => console.error("[weekly] 启动生成上周失败:", e.message)))
+    .catch(e => console.error("[weekly] 启动补跑失败:", e.message));
+}, 180_000);
+// 每小时检查一次：上海时间周一 04:00 触发
+setInterval(() => {
+  const sh = new Date(Date.now() + 8 * 3600_000); // 上海墙上时间
+  if (sh.getUTCDay() === 1 && sh.getUTCHours() === 4) {
+    generateWeeklyReport().catch(e => console.error("[weekly] 定时生成失败:", e.message));
+  }
+}, 3600_000);
 
 // HTTP 服务器入口：监听指定端口
 // 仅监听 127.0.0.1，公网通过 Nginx 反代访问，禁止绕过 Nginx 直连 9000
