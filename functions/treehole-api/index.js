@@ -32,6 +32,10 @@ const MAIL_PORT = parseInt(process.env.MAIL_PORT || "465", 10);
 // 邮箱注册总开关：true=暂停(默认),false=启用；可通过环境变量 EMAIL_REGISTRATION_DISABLED=false 恢复
 const EMAIL_REGISTRATION_DISABLED =
   (process.env.EMAIL_REGISTRATION_DISABLED || "true").toLowerCase() !== "false";
+// 推送邮件总开关：true=暂停所有推送邮件（周报+关键词订阅），false=正常发送
+// 通过环境变量 PUSH_EMAIL_DISABLED=false 启用
+const PUSH_EMAIL_DISABLED =
+  (process.env.PUSH_EMAIL_DISABLED || "true").toLowerCase() !== "false";
 const MAIL_FROM = `"AutoTreehole" <${MAIL_USER}>`;
 const ALLOWED_EMAIL_DOMAINS = ["pku.edu.cn", "stu.pku.edu.cn"];
 const TOKEN_SECRET = process.env.TOKEN_SECRET || "";
@@ -1401,12 +1405,12 @@ async function sendWeeklyReportToSubscribers(report) {
     </div>`;
     for (const sub of subs) {
       try {
-        await getMailer().sendMail({
+        await sendPushEmail({
           from: MAIL_FROM,
           to: sub.notify_email,
           subject: `树洞周报 · ${weekRange}`,
           html,
-        });
+        }, 'weekly');
         console.log(`[weekly] 已发送周报到 ${sub.notify_email}`);
       } catch (e) {
         console.error(`[weekly] 发送周报邮件失败 ${sub.notify_email}: ${e.message}`);
@@ -1580,6 +1584,19 @@ function getMailer() {
     auth: { user: MAIL_USER, pass: MAIL_PASS },
   });
   return mailTransporter;
+}
+
+/** 推送邮件开关拦截器：
+ *  当 PUSH_EMAIL_DISABLED=true 时，所有"推送"类邮件（周报订阅、关键词订阅匹配）都直接吞掉，
+ *  不调用 SMTP。验证码、系统告警等不通过此函数，不受影响。
+ *  调用方在循环 for 内部用 try-catch 包住，仍然无副作用。 */
+async function sendPushEmail(mailOptions, category) {
+  // category: 'weekly' | 'keyword' — 仅用于日志
+  if (PUSH_EMAIL_DISABLED) {
+    console.log(`[mail] 推送邮件已全局暂停，跳过 (${category}): to=${mailOptions.to}, subject=${mailOptions.subject}`);
+    return { skipped: true, reason: 'PUSH_EMAIL_DISABLED' };
+  }
+  return await getMailer().sendMail(mailOptions);
 }
 
 async function sendVerifyCodeEmail(toEmail, code) {
@@ -3057,12 +3074,12 @@ async function sendSubscriptionDigest(toEmail, userEmail, posts) {
       ${unsubLink}
     </p>
   </div>`;
-  await getMailer().sendMail({
+  await sendPushEmail({
     from: MAIL_FROM,
     to: toEmail,
     subject: `关键词订阅 ${kwLabel}· ${posts.length} 条新帖匹配`,
     html,
-  });
+  }, 'keyword');
 }
 
 
